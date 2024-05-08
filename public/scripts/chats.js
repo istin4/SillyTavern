@@ -5,6 +5,7 @@ import {
     addCopyToCodeBlocks,
     appendMediaToMessage,
     callPopup,
+    characters,
     chat,
     eventSource,
     event_types,
@@ -12,9 +13,14 @@ import {
     getRequestHeaders,
     hideSwipeButtons,
     name2,
+    reloadCurrentChat,
     saveChatDebounced,
+    saveSettingsDebounced,
     showSwipeButtons,
+    this_chid,
 } from '../script.js';
+import { selected_group } from './group-chats.js';
+import { power_user } from './power-user.js';
 import {
     extractTextFromHTML,
     extractTextFromMarkdown,
@@ -38,22 +44,29 @@ function isConvertible(type) {
 }
 
 /**
- * Mark message as hidden (system message).
- * @param {number} messageId Message ID
- * @param {JQuery<Element>} messageBlock Message UI element
- * @returns
+ * Mark a range of messages as hidden ("is_system") or not.
+ * @param {number} start Starting message ID
+ * @param {number} end Ending message ID (inclusive)
+ * @param {boolean} unhide If true, unhide the messages instead.
+ * @returns {Promise<void>}
  */
-export async function hideChatMessage(messageId, messageBlock) {
-    const chatId = getCurrentChatId();
+export async function hideChatMessageRange(start, end, unhide) {
+    if (!getCurrentChatId()) return;
 
-    if (!chatId || isNaN(messageId)) return;
+    if (isNaN(start)) return;
+    if (!end) end = start;
+    const hide = !unhide;
 
-    const message = chat[messageId];
+    for (let messageId = start; messageId <= end; messageId++) {
+        const message = chat[messageId];
+        if (!message) continue;
 
-    if (!message) return;
+        const messageBlock = $(`.mes[mesid="${messageId}"]`);
+        if (!messageBlock.length) continue;
 
-    message.is_system = true;
-    messageBlock.attr('is_system', String(true));
+        message.is_system = hide;
+        messageBlock.attr('is_system', String(hide));
+    }
 
     // Reload swipes. Useful when a last message is hidden.
     hideSwipeButtons();
@@ -63,28 +76,25 @@ export async function hideChatMessage(messageId, messageBlock) {
 }
 
 /**
- * Mark message as visible (non-system message).
+ * Mark message as hidden (system message).
+ * @deprecated Use hideChatMessageRange.
  * @param {number} messageId Message ID
- * @param {JQuery<Element>} messageBlock Message UI element
- * @returns
+ * @param {JQuery<Element>} _messageBlock Unused
+ * @returns {Promise<void>}
  */
-export async function unhideChatMessage(messageId, messageBlock) {
-    const chatId = getCurrentChatId();
+export async function hideChatMessage(messageId, _messageBlock) {
+    return hideChatMessageRange(messageId, messageId, false);
+}
 
-    if (!chatId || isNaN(messageId)) return;
-
-    const message = chat[messageId];
-
-    if (!message) return;
-
-    message.is_system = false;
-    messageBlock.attr('is_system', String(false));
-
-    // Reload swipes. Useful when a last message is hidden.
-    hideSwipeButtons();
-    showSwipeButtons();
-
-    saveChatDebounced();
+/**
+ * Mark message as visible (non-system message).
+ * @deprecated Use hideChatMessageRange.
+ * @param {number} messageId Message ID
+ * @param {JQuery<Element>} _messageBlock Unused
+ * @returns {Promise<void>}
+ */
+export async function unhideChatMessage(messageId, _messageBlock) {
+    return hideChatMessageRange(messageId, messageId, true);
 }
 
 /**
@@ -385,7 +395,8 @@ export function decodeStyleTags(text) {
 
     return text.replaceAll(styleDecodeRegex, (_, style) => {
         try {
-            const ast = css.parse(unescape(style));
+			let styleCleaned = unescape(style).replaceAll(/<br\/>/g, '');
+            const ast = css.parse(styleCleaned);
             const rules = ast?.stylesheet?.rules;
             if (rules) {
                 for (const rule of rules) {
@@ -416,17 +427,67 @@ export function decodeStyleTags(text) {
     });
 }
 
+async function openExternalMediaOverridesDialog() {
+    const entityId = getCurrentEntityId();
+
+    if (!entityId) {
+        toastr.info('No character or group selected');
+        return;
+    }
+
+    const template = $('#forbid_media_override_template > .forbid_media_override').clone();
+    template.find('.forbid_media_global_state_forbidden').toggle(power_user.forbid_external_images);
+    template.find('.forbid_media_global_state_allowed').toggle(!power_user.forbid_external_images);
+
+    if (power_user.external_media_allowed_overrides.includes(entityId)) {
+        template.find('#forbid_media_override_allowed').prop('checked', true);
+    }
+    else if (power_user.external_media_forbidden_overrides.includes(entityId)) {
+        template.find('#forbid_media_override_forbidden').prop('checked', true);
+    }
+    else {
+        template.find('#forbid_media_override_global').prop('checked', true);
+    }
+
+    callPopup(template, 'text', '', { wide: false, large: false });
+}
+
+export function getCurrentEntityId() {
+    if (selected_group) {
+        return String(selected_group);
+    }
+
+    return characters[this_chid]?.avatar ?? null;
+}
+
+export function isExternalMediaAllowed() {
+    const entityId = getCurrentEntityId();
+    if (!entityId) {
+        return !power_user.forbid_external_images;
+    }
+
+    if (power_user.external_media_allowed_overrides.includes(entityId)) {
+        return true;
+    }
+
+    if (power_user.external_media_forbidden_overrides.includes(entityId)) {
+        return false;
+    }
+
+    return !power_user.forbid_external_images;
+}
+
 jQuery(function () {
     $(document).on('click', '.mes_hide', async function () {
         const messageBlock = $(this).closest('.mes');
         const messageId = Number(messageBlock.attr('mesid'));
-        await hideChatMessage(messageId, messageBlock);
+        await hideChatMessageRange(messageId, messageId, false);
     });
 
     $(document).on('click', '.mes_unhide', async function () {
         const messageBlock = $(this).closest('.mes');
         const messageId = Number(messageBlock.attr('mesid'));
-        await unhideChatMessage(messageId, messageBlock);
+        await hideChatMessageRange(messageId, messageId, true);
     });
 
     $(document).on('click', '.mes_file_delete', async function () {
@@ -509,6 +570,32 @@ jQuery(function () {
     $(document).on('click', 'body.documentstyle .mes .mes_text', function () {
         if ($('.edit_textarea').length) return;
         $(this).closest('.mes').find('.mes_edit').trigger('click');
+    });
+
+    $(document).on('click', '.open_media_overrides', openExternalMediaOverridesDialog);
+    $(document).on('input', '#forbid_media_override_allowed', function () {
+        const entityId = getCurrentEntityId();
+        if (!entityId) return;
+        power_user.external_media_allowed_overrides.push(entityId);
+        power_user.external_media_forbidden_overrides = power_user.external_media_forbidden_overrides.filter((v) => v !== entityId);
+        saveSettingsDebounced();
+        reloadCurrentChat();
+    });
+    $(document).on('input', '#forbid_media_override_forbidden', function () {
+        const entityId = getCurrentEntityId();
+        if (!entityId) return;
+        power_user.external_media_forbidden_overrides.push(entityId);
+        power_user.external_media_allowed_overrides = power_user.external_media_allowed_overrides.filter((v) => v !== entityId);
+        saveSettingsDebounced();
+        reloadCurrentChat();
+    });
+    $(document).on('input', '#forbid_media_override_global', function () {
+        const entityId = getCurrentEntityId();
+        if (!entityId) return;
+        power_user.external_media_allowed_overrides = power_user.external_media_allowed_overrides.filter((v) => v !== entityId);
+        power_user.external_media_forbidden_overrides = power_user.external_media_forbidden_overrides.filter((v) => v !== entityId);
+        saveSettingsDebounced();
+        reloadCurrentChat();
     });
 
     $('#file_form_input').on('change', onFileAttach);

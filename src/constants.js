@@ -1,5 +1,6 @@
 const DIRECTORIES = {
     worlds: 'public/worlds/',
+    user: 'public/user',
     avatars: 'public/User Avatars',
     images: 'public/img/',
     userImages: 'public/user/images/',
@@ -161,6 +162,8 @@ const CHAT_COMPLETION_SOURCES = {
     MAKERSUITE: 'makersuite',
     MISTRALAI: 'mistralai',
     CUSTOM: 'custom',
+    COHERE: 'cohere',
+    PERPLEXITY: 'perplexity',
 };
 
 const UPLOADS_PATH = './uploads';
@@ -175,7 +178,39 @@ const TEXTGEN_TYPES = {
     TOGETHERAI: 'togetherai',
     LLAMACPP: 'llamacpp',
     OLLAMA: 'ollama',
+    INFERMATICAI: 'infermaticai',
+    DREAMGEN: 'dreamgen',
+    OPENROUTER: 'openrouter',
 };
+
+const INFERMATICAI_KEYS = [
+    'model',
+    'prompt',
+    'max_tokens',
+    'temperature',
+    'top_p',
+    'top_k',
+    'repetition_penalty',
+    'stream',
+    'stop',
+];
+
+// https://dreamgen.com/docs/api#openai-text
+const DREAMGEN_KEYS = [
+    'model',
+    'prompt',
+    'max_tokens',
+    'temperature',
+    'top_p',
+    'top_k',
+    'min_p',
+    'repetition_penalty',
+    'frequency_penalty',
+    'presence_penalty',
+    'stop',
+    'stream',
+    'minimum_message_content_tokens',
+];
 
 // https://docs.together.ai/reference/completions
 const TOGETHERAI_KEYS = [
@@ -187,6 +222,7 @@ const TOGETHERAI_KEYS = [
     'top_k',
     'repetition_penalty',
     'stream',
+    'stop',
 ];
 
 // https://github.com/jmorganca/ollama/blob/main/docs/api.md#request-with-options
@@ -208,8 +244,31 @@ const OLLAMA_KEYS = [
     'mirostat_eta',
 ];
 
-const AVATAR_WIDTH = 400;
-const AVATAR_HEIGHT = 600;
+const AVATAR_WIDTH = 512;
+const AVATAR_HEIGHT = 768;
+
+const OPENROUTER_HEADERS = {
+    'HTTP-Referer': 'https://sillytavern.app',
+    'X-Title': 'SillyTavern',
+};
+
+const OPENROUTER_KEYS = [
+    'max_tokens',
+    'temperature',
+    'top_k',
+    'top_p',
+    'presence_penalty',
+    'frequency_penalty',
+    'repetition_penalty',
+    'min_p',
+    'top_a',
+    'seed',
+    'logit_bias',
+    'model',
+    'stream',
+    'prompt',
+    'stop',
+];
 
 module.exports = {
     DIRECTORIES,
@@ -223,4 +282,8 @@ module.exports = {
     AVATAR_HEIGHT,
     TOGETHERAI_KEYS,
     OLLAMA_KEYS,
+    INFERMATICAI_KEYS,
+    DREAMGEN_KEYS,
+    OPENROUTER_HEADERS,
+    OPENROUTER_KEYS,
 };

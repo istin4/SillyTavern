@@ -1,17 +1,96 @@
 const express = require('express');
 const fetch = require('node-fetch').default;
-const { Readable } = require('stream');
+const Readable = require('stream').Readable;
 
 const { jsonParser } = require('../../express-common');
-const { CHAT_COMPLETION_SOURCES, GEMINI_SAFETY, BISON_SAFETY } = require('../../constants');
+const { CHAT_COMPLETION_SOURCES, GEMINI_SAFETY, BISON_SAFETY, OPENROUTER_HEADERS } = require('../../constants');
 const { forwardFetchResponse, getConfigValue, tryParse, uuidv4, mergeObjectWithYaml, excludeKeysByYaml, color } = require('../../util');
-const { convertClaudePrompt, convertGooglePrompt, convertTextCompletionPrompt } = require('../prompt-converters');
+const { convertClaudeMessages, convertGooglePrompt, convertTextCompletionPrompt, convertCohereMessages } = require('../../prompt-converters');
 
 const { readSecret, SECRET_KEYS } = require('../secrets');
 const { getTokenizerModel, getSentencepiceTokenizer, getTiktokenTokenizer, sentencepieceTokenizers, TEXT_COMPLETION_MODELS } = require('../tokenizers');
 
 const API_OPENAI = 'https://api.openai.com/v1';
 const API_CLAUDE = 'https://api.anthropic.com/v1';
+const API_MISTRAL = 'https://api.mistral.ai/v1';
+const API_COHERE = 'https://api.cohere.ai/v1';
+const API_PERPLEXITY = 'https://api.perplexity.ai';
+
+/**
+ * Applies a post-processing step to the generated messages.
+ * @param {object[]} messages Messages to post-process
+ * @param {string} type Prompt conversion type
+ * @param {string} charName Character name
+ * @param {string} userName User name
+ * @returns
+ */
+function postProcessPrompt(messages, type, charName, userName) {
+    switch (type) {
+        case 'claude':
+            return convertClaudeMessages(messages, '', false, '', charName, userName).messages;
+        default:
+            return messages;
+    }
+}
+
+/**
+ * Ollama strikes back. Special boy #2's steaming routine.
+ * Wrap this abomination into proper SSE stream, again.
+ * @param {import('node-fetch').Response} jsonStream JSON stream
+ * @param {import('express').Request} request Express request
+ * @param {import('express').Response} response Express response
+ * @returns {Promise<any>} Nothing valuable
+ */
+async function parseCohereStream(jsonStream, request, response) {
+    try {
+        let partialData = '';
+        jsonStream.body.on('data', (data) => {
+            const chunk = data.toString();
+            partialData += chunk;
+            while (true) {
+                let json;
+                try {
+                    json = JSON.parse(partialData);
+                } catch (e) {
+                    break;
+                }
+                if (json.message) {
+                    const message = json.message || 'Unknown error';
+                    const chunk = { error: { message: message } };
+                    response.write(`data: ${JSON.stringify(chunk)}\n\n`);
+                    partialData = '';
+                    break;
+                } else if (json.event_type === 'text-generation') {
+                    const text = json.text || '';
+                    const chunk = { choices: [{ text }] };
+                    response.write(`data: ${JSON.stringify(chunk)}\n\n`);
+                    partialData = '';
+                } else {
+                    partialData = '';
+                    break;
+                }
+            }
+        });
+
+        request.socket.on('close', function () {
+            if (jsonStream.body instanceof Readable) jsonStream.body.destroy();
+            response.end();
+        });
+
+        jsonStream.body.on('end', () => {
+            console.log('Streaming request finished');
+            response.write('data: [DONE]\n\n');
+            response.end();
+        });
+    } catch (error) {
+        console.log('Error forwarding streaming response:', error);
+        if (!response.headersSent) {
+            return response.status(500).send({ error: true });
+        } else {
+            return response.end();
+        }
+    }
+}
 
 /**
  * Sends a request to Claude API.
@@ -34,45 +113,8 @@ async function sendClaudeRequest(request, response) {
         request.socket.on('close', function () {
             controller.abort();
         });
-
-        const isSysPromptSupported = request.body.model === 'claude-2' || request.body.model === 'claude-2.1';
-        const requestPrompt = convertClaudePrompt(request.body.messages, !request.body.exclude_assistant, request.body.assistant_prefill, isSysPromptSupported, request.body.claude_use_sysprompt, request.body.human_sysprompt_message, request.body.claude_exclude_prefixes);
-
-        // Check Claude messages sequence and prefixes presence.
-        let sequenceError = [];
-        const sequence = requestPrompt.split('\n').filter(x => x.startsWith('Human:') || x.startsWith('Assistant:'));
-        const humanFound = sequence.some(line => line.startsWith('Human:'));
-        const assistantFound = sequence.some(line => line.startsWith('Assistant:'));
-        let humanErrorCount = 0;
-        let assistantErrorCount = 0;
-
-        for (let i = 0; i < sequence.length - 1; i++) {
-            if (sequence[i].startsWith(sequence[i + 1].split(':')[0])) {
-                if (sequence[i].startsWith('Human:')) {
-                    humanErrorCount++;
-                } else if (sequence[i].startsWith('Assistant:')) {
-                    assistantErrorCount++;
-                }
-            }
-        }
-
-        if (!humanFound) {
-            sequenceError.push(`${divider}\nWarning: No 'Human:' prefix found in the prompt.\n${divider}`);
-        }
-        if (!assistantFound) {
-            sequenceError.push(`${divider}\nWarning: No 'Assistant: ' prefix found in the prompt.\n${divider}`);
-        }
-        if (sequence[0] && !sequence[0].startsWith('Human:')) {
-            sequenceError.push(`${divider}\nWarning: The messages sequence should start with 'Human:' prefix.\nMake sure you have '\\n\\nHuman:' prefix at the very beggining of the prompt, or after the system prompt.\n${divider}`);
-        }
-        if (humanErrorCount > 0 || assistantErrorCount > 0) {
-            sequenceError.push(`${divider}\nWarning: Detected incorrect Prefix sequence(s).`);
-            sequenceError.push(`Incorrect "Human:" prefix(es): ${humanErrorCount}.\nIncorrect "Assistant: " prefix(es): ${assistantErrorCount}.`);
-            sequenceError.push('Check the prompt above and fix it in the SillyTavern.');
-            sequenceError.push('\nThe correct sequence in the console should look like this:\n(System prompt msg) <-(for the sysprompt format only, else have \\n\\n above the first human\'s  message.)');
-            sequenceError.push(`\\n +      <-----(Each message beginning with the "Assistant:/Human:" prefix must have \\n\\n before it.)\n\\n +\nHuman: \\n +\n\\n +\nAssistant: \\n +\n...\n\\n +\nHuman: \\n +\n\\n +\nAssistant: \n${divider}`);
-        }
-
+        let use_system_prompt = (request.body.model.startsWith('claude-2') || request.body.model.startsWith('claude-3')) && request.body.claude_use_sysprompt;
+        let converted_prompt = convertClaudeMessages(request.body.messages, request.body.assistant_prefill, use_system_prompt, request.body.human_sysprompt_message, request.body.char_name, request.body.user_name);
         // Add custom stop sequences
         const stopSequences = ['\n\nHuman:', '\n\nSystem:', '\n\nAssistant:'];
         if (Array.isArray(request.body.stop)) {
@@ -80,23 +122,21 @@ async function sendClaudeRequest(request, response) {
         }
 
         const requestBody = {
-            prompt: requestPrompt,
+            messages: converted_prompt.messages,
             model: request.body.model,
-            max_tokens_to_sample: request.body.max_tokens,
+            max_tokens: request.body.max_tokens,
             stop_sequences: stopSequences,
             temperature: request.body.temperature,
             top_p: request.body.top_p,
             top_k: request.body.top_k,
             stream: request.body.stream,
         };
-
+        if (use_system_prompt) {
+            requestBody.system = converted_prompt.systemPrompt;
+        }
         console.log('Claude request:', requestBody);
 
-        sequenceError.forEach(sequenceError => {
-            console.log(color.red(sequenceError));
-        });
-
-        const generateResponse = await fetch(apiUrl + '/complete', {
+        const generateResponse = await fetch(apiUrl + '/messages', {
             method: 'POST',
             signal: controller.signal,
             body: JSON.stringify(requestBody),
@@ -118,7 +158,7 @@ async function sendClaudeRequest(request, response) {
             }
 
             const generateResponseJson = await generateResponse.json();
-            const responseText = generateResponseJson.completion;
+            const responseText = generateResponseJson.content[0].text;
             console.log('Claude response:', generateResponseJson);
 
             // Wrap it back to OAI format
@@ -213,17 +253,25 @@ async function sendMakerSuiteRequest(request, response) {
     };
 
     function getGeminiBody() {
-        return {
-            contents: convertGooglePrompt(request.body.messages, model),
+        const should_use_system_prompt = model === 'gemini-1.5-pro-latest' && request.body.use_makersuite_sysprompt;
+        const prompt = convertGooglePrompt(request.body.messages, model, should_use_system_prompt, request.body.char_name, request.body.user_name);
+        let body = {
+            contents: prompt.contents,
             safetySettings: GEMINI_SAFETY,
             generationConfig: generationConfig,
         };
+
+        if (should_use_system_prompt) {
+            body.system_instruction = prompt.system_instruction;
+        }
+
+        return body;
     }
 
     function getBisonBody() {
         const prompt = isText
             ? ({ text: convertTextCompletionPrompt(request.body.messages) })
-            : ({ messages: convertGooglePrompt(request.body.messages, model) });
+            : ({ messages: convertGooglePrompt(request.body.messages, model).contents });
 
         /** @type {any} Shut the lint up */
         const bisonBody = {
@@ -267,7 +315,7 @@ async function sendMakerSuiteRequest(request, response) {
             ? (stream ? 'streamGenerateContent' : 'generateContent')
             : (isText ? 'generateText' : 'generateMessage');
 
-        const generateResponse = await fetch(`https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:${responseType}?key=${apiKey}`, {
+        const generateResponse = await fetch(`https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:${responseType}?key=${apiKey}${stream ? '&alt=sse' : ''}`, {
             body: JSON.stringify(body),
             method: 'POST',
             headers: {
@@ -279,36 +327,8 @@ async function sendMakerSuiteRequest(request, response) {
         // have to do this because of their busted ass streaming endpoint
         if (stream) {
             try {
-                let partialData = '';
-                generateResponse.body.on('data', (data) => {
-                    const chunk = data.toString();
-                    if (chunk.startsWith(',') || chunk.endsWith(',') || chunk.startsWith('[') || chunk.endsWith(']')) {
-                        partialData = chunk.slice(1);
-                    } else {
-                        partialData += chunk;
-                    }
-                    while (true) {
-                        let json;
-                        try {
-                            json = JSON.parse(partialData);
-                        } catch (e) {
-                            break;
-                        }
-                        response.write(JSON.stringify(json));
-                        partialData = '';
-                    }
-                });
-
-                request.socket.on('close', function () {
-                    if (generateResponse.body instanceof Readable) generateResponse.body.destroy();
-                    response.end();
-                });
-
-                generateResponse.body.on('end', () => {
-                    console.log('Streaming request finished');
-                    response.end();
-                });
-
+                // Pipe remote SSE stream to Express response
+                forwardFetchResponse(generateResponse, response);
             } catch (error) {
                 console.log('Error forwarding streaming response:', error);
                 if (!response.headersSent) {
@@ -420,7 +440,7 @@ async function sendAI21Request(request, response) {
             } else {
                 console.log(r.completions[0].data.text);
             }
-            const reply = { choices: [{ 'message': { 'content': r.completions[0].data.text } }] };
+            const reply = { choices: [{ 'message': { 'content': r.completions?.[0]?.data?.text } }] };
             return response.send(reply);
         })
         .catch(err => {
@@ -436,7 +456,8 @@ async function sendAI21Request(request, response) {
  * @param {express.Response} response Express response
  */
 async function sendMistralAIRequest(request, response) {
-    const apiKey = readSecret(SECRET_KEYS.MISTRALAI);
+    const apiUrl = new URL(request.body.reverse_proxy || API_MISTRAL).toString();
+    const apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(SECRET_KEYS.MISTRALAI);
 
     if (!apiKey) {
         console.log('MistralAI API key is missing.');
@@ -446,6 +467,9 @@ async function sendMistralAIRequest(request, response) {
     try {
         //must send a user role as last message
         const messages = Array.isArray(request.body.messages) ? request.body.messages : [];
+        //large seems to be throwing a 500 error if we don't make the first message a user role, most likely a bug since the other models won't do this
+        if (request.body.model.includes('large'))
+            messages[0].role = 'user';
         const lastMsg = messages[messages.length - 1];
         if (messages.length > 0 && lastMsg && (lastMsg.role === 'system' || lastMsg.role === 'assistant')) {
             if (lastMsg.role === 'assistant' && lastMsg.name) {
@@ -500,7 +524,7 @@ async function sendMistralAIRequest(request, response) {
 
         console.log('MisralAI request:', requestBody);
 
-        const generateResponse = await fetch('https://api.mistral.ai/v1/chat/completions', config);
+        const generateResponse = await fetch(apiUrl + '/chat/completions', config);
         if (request.body.stream) {
             forwardFetchResponse(generateResponse, response);
         } else {
@@ -516,6 +540,97 @@ async function sendMistralAIRequest(request, response) {
         }
     } catch (error) {
         console.log('Error communicating with MistralAI API: ', error);
+        if (!response.headersSent) {
+            response.send({ error: true });
+        } else {
+            response.end();
+        }
+    }
+}
+
+/**
+ * Sends a request to Cohere API.
+ * @param {express.Request} request Express request
+ * @param {express.Response} response Express response
+ */
+async function sendCohereRequest(request, response) {
+    const apiKey = readSecret(SECRET_KEYS.COHERE);
+    const controller = new AbortController();
+    request.socket.removeAllListeners('close');
+    request.socket.on('close', function () {
+        controller.abort();
+    });
+
+    if (!apiKey) {
+        console.log('Cohere API key is missing.');
+        return response.status(400).send({ error: true });
+    }
+
+    try {
+        const convertedHistory = convertCohereMessages(request.body.messages, request.body.char_name, request.body.user_name);
+        const connectors = [];
+
+        if (request.body.websearch) {
+            connectors.push({
+                id: 'web-search',
+            });
+        }
+
+        // https://docs.cohere.com/reference/chat
+        const requestBody = {
+            stream: Boolean(request.body.stream),
+            model: request.body.model,
+            message: convertedHistory.userPrompt,
+            preamble: convertedHistory.systemPrompt,
+            chat_history: convertedHistory.chatHistory,
+            temperature: request.body.temperature,
+            max_tokens: request.body.max_tokens,
+            k: request.body.top_k,
+            p: request.body.top_p,
+            seed: request.body.seed,
+            stop_sequences: request.body.stop,
+            frequency_penalty: request.body.frequency_penalty,
+            presence_penalty: request.body.presence_penalty,
+            prompt_truncation: 'AUTO_PRESERVE_ORDER',
+            connectors: connectors,
+            documents: [],
+            tools: [],
+            tool_results: [],
+            search_queries_only: false,
+        };
+
+        console.log('Cohere request:', requestBody);
+
+        const config = {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + apiKey,
+            },
+            body: JSON.stringify(requestBody),
+            signal: controller.signal,
+            timeout: 0,
+        };
+
+        const apiUrl = API_COHERE + '/chat';
+
+        if (request.body.stream) {
+            const stream = await fetch(apiUrl, config);
+            parseCohereStream(stream, request, response);
+        } else {
+            const generateResponse = await fetch(apiUrl, config);
+            if (!generateResponse.ok) {
+                console.log(`Cohere API returned error: ${generateResponse.status} ${generateResponse.statusText} ${await generateResponse.text()}`);
+                // a 401 unauthorized response breaks the frontend auth, so return a 500 instead. prob a better way of dealing with this.
+                // 401s are already handled by the streaming processor and dont pop up an error toast, that should probably be fixed too.
+                return response.status(generateResponse.status === 401 ? 500 : generateResponse.status).send({ error: true });
+            }
+            const generateResponseJson = await generateResponse.json();
+            console.log('Cohere response:', generateResponseJson);
+            return response.send(generateResponseJson);
+        }
+    } catch (error) {
+        console.log('Error communicating with Cohere API: ', error);
         if (!response.headersSent) {
             response.send({ error: true });
         } else {
@@ -540,17 +655,21 @@ router.post('/status', jsonParser, async function (request, response_getstatus_o
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENROUTER) {
         api_url = 'https://openrouter.ai/api/v1';
         api_key_openai = readSecret(SECRET_KEYS.OPENROUTER);
-        // OpenRouter needs to pass the referer: https://openrouter.ai/docs
-        headers = { 'HTTP-Referer': request.headers.referer };
+        // OpenRouter needs to pass the Referer and X-Title: https://openrouter.ai/docs#requests
+        headers = { ...OPENROUTER_HEADERS };
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.MISTRALAI) {
-        api_url = 'https://api.mistral.ai/v1';
-        api_key_openai = readSecret(SECRET_KEYS.MISTRALAI);
+        api_url = new URL(request.body.reverse_proxy || API_MISTRAL).toString();
+        api_key_openai = request.body.reverse_proxy ? request.body.proxy_password : readSecret(SECRET_KEYS.MISTRALAI);
         headers = {};
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.CUSTOM) {
         api_url = request.body.custom_url;
         api_key_openai = readSecret(SECRET_KEYS.CUSTOM);
         headers = {};
         mergeObjectWithYaml(headers, request.body.custom_include_headers);
+    } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.COHERE) {
+        api_url = API_COHERE;
+        api_key_openai = readSecret(SECRET_KEYS.COHERE);
+        headers = {};
     } else {
         console.log('This chat completion source is not supported yet.');
         return response_getstatus_openai.status(400).send({ error: true });
@@ -573,6 +692,10 @@ router.post('/status', jsonParser, async function (request, response_getstatus_o
         if (response.ok) {
             const data = await response.json();
             response_getstatus_openai.send(data);
+
+            if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.COHERE && Array.isArray(data?.models)) {
+                data.data = data.models.map(model => ({ id: model.name, ...model }));
+            }
 
             if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENROUTER && Array.isArray(data?.data)) {
                 let models = [];
@@ -699,18 +822,28 @@ router.post('/generate', jsonParser, function (request, response) {
         case CHAT_COMPLETION_SOURCES.AI21: return sendAI21Request(request, response);
         case CHAT_COMPLETION_SOURCES.MAKERSUITE: return sendMakerSuiteRequest(request, response);
         case CHAT_COMPLETION_SOURCES.MISTRALAI: return sendMistralAIRequest(request, response);
+        case CHAT_COMPLETION_SOURCES.COHERE: return sendCohereRequest(request, response);
     }
 
     let apiUrl;
     let apiKey;
     let headers;
     let bodyParams;
+    const isTextCompletion = Boolean(request.body.model && TEXT_COMPLETION_MODELS.includes(request.body.model)) || typeof request.body.messages === 'string';
 
     if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENAI) {
         apiUrl = new URL(request.body.reverse_proxy || API_OPENAI).toString();
         apiKey = request.body.reverse_proxy ? request.body.proxy_password : readSecret(SECRET_KEYS.OPENAI);
         headers = {};
-        bodyParams = {};
+        bodyParams = {
+            logprobs: request.body.logprobs,
+        };
+
+        // Adjust logprobs params for Chat Completions API, which expects { top_logprobs: number; logprobs: boolean; }
+        if (!isTextCompletion && bodyParams.logprobs > 0) {
+            bodyParams.top_logprobs = bodyParams.logprobs;
+            bodyParams.logprobs = true;
+        }
 
         if (getConfigValue('openai.randomizeUserId', false)) {
             bodyParams['user'] = uuidv4();
@@ -718,8 +851,8 @@ router.post('/generate', jsonParser, function (request, response) {
     } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.OPENROUTER) {
         apiUrl = 'https://openrouter.ai/api/v1';
         apiKey = readSecret(SECRET_KEYS.OPENROUTER);
-        // OpenRouter needs to pass the referer: https://openrouter.ai/docs
-        headers = { 'HTTP-Referer': request.headers.referer };
+        // OpenRouter needs to pass the Referer and X-Title: https://openrouter.ai/docs#requests
+        headers = { ...OPENROUTER_HEADERS };
         bodyParams = { 'transforms': ['middle-out'] };
 
         if (request.body.min_p !== undefined) {
@@ -730,6 +863,10 @@ router.post('/generate', jsonParser, function (request, response) {
             bodyParams['top_a'] = request.body.top_a;
         }
 
+        if (request.body.repetition_penalty !== undefined) {
+            bodyParams['repetition_penalty'] = request.body.repetition_penalty;
+        }
+
         if (request.body.use_fallback) {
             bodyParams['route'] = 'fallback';
         }
@@ -737,9 +874,33 @@ router.post('/generate', jsonParser, function (request, response) {
         apiUrl = request.body.custom_url;
         apiKey = readSecret(SECRET_KEYS.CUSTOM);
         headers = {};
-        bodyParams = {};
+        bodyParams = {
+            logprobs: request.body.logprobs,
+        };
+
+        // Adjust logprobs params for Chat Completions API, which expects { top_logprobs: number; logprobs: boolean; }
+        if (!isTextCompletion && bodyParams.logprobs > 0) {
+            bodyParams.top_logprobs = bodyParams.logprobs;
+            bodyParams.logprobs = true;
+        }
+
         mergeObjectWithYaml(bodyParams, request.body.custom_include_body);
         mergeObjectWithYaml(headers, request.body.custom_include_headers);
+
+        if (request.body.custom_prompt_post_processing) {
+            console.log('Applying custom prompt post-processing of type', request.body.custom_prompt_post_processing);
+            request.body.messages = postProcessPrompt(
+                request.body.messages,
+                request.body.custom_prompt_post_processing,
+                request.body.char_name,
+                request.body.user_name);
+        }
+    } else if (request.body.chat_completion_source === CHAT_COMPLETION_SOURCES.PERPLEXITY) {
+        apiUrl = API_PERPLEXITY;
+        apiKey = readSecret(SECRET_KEYS.PERPLEXITY);
+        headers = {};
+        bodyParams = {};
+        request.body.messages = postProcessPrompt(request.body.messages, 'claude', request.body.char_name, request.body.user_name);
     } else {
         console.log('This chat completion source is not supported yet.');
         return response.status(400).send({ error: true });
@@ -755,7 +916,6 @@ router.post('/generate', jsonParser, function (request, response) {
         bodyParams['stop'] = request.body.stop;
     }
 
-    const isTextCompletion = Boolean(request.body.model && TEXT_COMPLETION_MODELS.includes(request.body.model)) || typeof request.body.messages === 'string';
     const textPrompt = isTextCompletion ? convertTextCompletionPrompt(request.body.messages) : '';
     const endpointUrl = isTextCompletion && request.body.chat_completion_source !== CHAT_COMPLETION_SOURCES.OPENROUTER ?
         `${apiUrl}/completions` :
@@ -781,6 +941,7 @@ router.post('/generate', jsonParser, function (request, response) {
         'stop': isTextCompletion === false ? request.body.stop : undefined,
         'logit_bias': request.body.logit_bias,
         'seed': request.body.seed,
+        'n': request.body.n,
         ...bodyParams,
     };
 
@@ -827,7 +988,7 @@ router.post('/generate', jsonParser, function (request, response) {
                 let json = await fetchResponse.json();
                 response.send(json);
                 console.log(json);
-                console.log(json?.choices[0]?.message);
+                console.log(json?.choices?.[0]?.message);
             } else if (fetchResponse.status === 429 && retries > 0) {
                 console.log(`Out of quota, retrying in ${Math.round(timeout / 1000)}s`);
                 setTimeout(() => {

@@ -23,6 +23,8 @@ node_modules/
 /config.yaml
 /config.conf.bak
 /docker/config
+/docker/user
+/docker/extensions
 .DS_Store
 public/settings.json
 /thumbnails
@@ -45,3 +47,4 @@ access.log
 certs/
 test.bat
 /plugins/
+/data

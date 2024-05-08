@@ -35,11 +35,15 @@ skipContentCheck: false
 # Disable automatic chats backup
 disableChatBackup: false
 # API request overrides (for KoboldAI and Text Completion APIs)
+## Note: host includes the port number if it's not the default (80 or 443)
 ## Format is an array of objects:
 ## - hosts:
 ##   - example.com
 ##   headers:
 ##     Content-Type: application/json
+##   - 127.0.0.1:5001
+##   headers:
+##     User-Agent: "Googlebot/2.1 (+http://www.google.com/bot.html)"
 requestOverrides: []
 # -- PLUGIN CONFIGURATION --
 # Enable UI extensions
@@ -53,6 +57,8 @@ extras:
   captioningModel: Xenova/vit-gpt2-image-captioning
   embeddingModel: Cohee/jina-embeddings-v2-base-en
   promptExpansionModel: Cohee/fooocus_expansion-onnx
+  speechToTextModel: Xenova/whisper-small
+  textToSpeechModel: Xenova/speecht5_tts
 # -- OPENAI CONFIGURATION --
 openai:
   # Will send a random user ID to OpenAI completion API

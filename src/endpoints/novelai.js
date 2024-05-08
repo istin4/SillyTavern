@@ -6,6 +6,7 @@ const { readAllChunks, extractFileFromZipBuffer, forwardFetchResponse } = requir
 const { jsonParser } = require('../express-common');
 
 const API_NOVELAI = 'https://api.novelai.net';
+const IMAGE_NOVELAI = 'https://image.novelai.net';
 
 // Ban bracket generation, plus defaults
 const badWordsList = [
@@ -172,6 +173,7 @@ router.post('/generate', jsonParser, async function (req, res) {
             'return_full_text': req.body.return_full_text,
             'prefix': req.body.prefix,
             'order': req.body.order,
+            'num_logprobs': req.body.num_logprobs,
         },
     };
 
@@ -215,7 +217,7 @@ router.post('/generate', jsonParser, async function (req, res) {
             }
 
             const data = await response.json();
-            console.log(data);
+            console.log('NovelAI Output', data?.output);
             return res.send(data);
         }
     } catch (error) {
@@ -237,7 +239,7 @@ router.post('/generate-image', jsonParser, async (request, response) => {
 
     try {
         console.log('NAI Diffusion request:', request.body);
-        const generateUrl = `${API_NOVELAI}/ai/generate-image`;
+        const generateUrl = `${IMAGE_NOVELAI}/ai/generate-image`;
         const generateResult = await fetch(generateUrl, {
             method: 'POST',
             headers: {
@@ -264,8 +266,8 @@ router.post('/generate-image', jsonParser, async (request, response) => {
                     controlnet_strength: 1,
                     dynamic_thresholding: false,
                     legacy: false,
-                    sm: false,
-                    sm_dyn: false,
+                    sm: request.body.sm ?? false,
+                    sm_dyn: request.body.sm_dyn ?? false,
                     uncond_scale: 1,
                 },
             }),

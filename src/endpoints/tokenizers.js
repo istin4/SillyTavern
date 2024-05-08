@@ -4,7 +4,7 @@ const express = require('express');
 const { SentencePieceProcessor } = require('@agnai/sentencepiece-js');
 const tiktoken = require('@dqbd/tiktoken');
 const { Tokenizer } = require('@agnai/web-tokenizers');
-const { convertClaudePrompt, convertGooglePrompt } = require('./prompt-converters');
+const { convertClaudePrompt, convertGooglePrompt } = require('../prompt-converters');
 const { readSecret, SECRET_KEYS } = require('./secrets');
 const { TEXTGEN_TYPES } = require('../constants');
 const { jsonParser } = require('../express-common');
@@ -249,7 +249,8 @@ async function loadClaudeTokenizer(modelPath) {
 }
 
 function countClaudeTokens(tokenizer, messages) {
-    const convertedPrompt = convertClaudePrompt(messages, false, false, false);
+    // Should be fine if we use the old conversion method instead of the messages API one i think?
+    const convertedPrompt = convertClaudePrompt(messages, false, '', false, false, '', false);
 
     // Fallback to strlen estimation
     if (!tokenizer) {
@@ -298,11 +299,13 @@ function createSentencepieceDecodingHandler(tokenizer) {
 
             const ids = request.body.ids || [];
             const instance = await tokenizer?.get();
-            const text = await instance?.decodeIds(ids);
-            return response.send({ text });
+            const ops = ids.map(id => instance.decodeIds([id]));
+            const chunks = await Promise.all(ops);
+            const text = chunks.join('');
+            return response.send({ text, chunks });
         } catch (error) {
             console.log(error);
-            return response.send({ text: '' });
+            return response.send({ text: '', chunks: [] });
         }
     };
 }
@@ -395,7 +398,7 @@ router.post('/google/count', jsonParser, async function (req, res) {
             accept: 'application/json',
             'content-type': 'application/json',
         },
-        body: JSON.stringify({ contents: convertGooglePrompt(req.body) }),
+        body: JSON.stringify({ contents: convertGooglePrompt(req.body, String(req.query.model)).contents }),
     };
     try {
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${req.query.model}:countTokens?key=${readSecret(SECRET_KEYS.MAKERSUITE)}`, options);
@@ -604,7 +607,7 @@ router.post('/remote/textgenerationwebui/encode', jsonParser, async function (re
             headers: { 'Content-Type': 'application/json' },
         };
 
-        setAdditionalHeaders(request, args, null);
+        setAdditionalHeaders(request, args, baseUrl);
 
         // Convert to string + remove trailing slash + /v1 suffix
         let url = String(baseUrl).replace(/\/$/, '').replace(/\/v1$/, '');
@@ -625,6 +628,10 @@ router.post('/remote/textgenerationwebui/encode', jsonParser, async function (re
                 case TEXTGEN_TYPES.LLAMACPP:
                     url += '/tokenize';
                     args.body = JSON.stringify({ 'content': text });
+                    break;
+                case TEXTGEN_TYPES.APHRODITE:
+                    url += '/v1/tokenize';
+                    args.body = JSON.stringify({ 'prompt': text });
                     break;
                 default:
                     url += '/v1/internal/encode';

@@ -73,19 +73,31 @@ function getBasicAuthHeader(auth) {
 /**
  * Returns the version of the running instance. Get the version from the package.json file and the git revision.
  * Also returns the agent string for the Horde API.
- * @returns {Promise<{agent: string, pkgVersion: string, gitRevision: string | null, gitBranch: string | null}>} Version info object
+ * @returns {Promise<{agent: string, pkgVersion: string, gitRevision: string | null, gitBranch: string | null, commitDate: string | null, isLatest: boolean}>} Version info object
  */
 async function getVersion() {
     let pkgVersion = 'UNKNOWN';
     let gitRevision = null;
     let gitBranch = null;
+    let commitDate = null;
+    let isLatest = true;
+
     try {
         const pkgJson = require(path.join(process.cwd(), './package.json'));
         pkgVersion = pkgJson.version;
         if (!process['pkg'] && commandExistsSync('git')) {
             const git = simpleGit();
-            gitRevision = await git.cwd(process.cwd()).revparse(['--short', 'HEAD']);
-            gitBranch = await git.cwd(process.cwd()).revparse(['--abbrev-ref', 'HEAD']);
+            const cwd = process.cwd();
+            gitRevision = await git.cwd(cwd).revparse(['--short', 'HEAD']);
+            gitBranch = await git.cwd(cwd).revparse(['--abbrev-ref', 'HEAD']);
+            commitDate = await git.cwd(cwd).show(['-s', '--format=%ci', gitRevision]);
+
+            const trackingBranch = await git.cwd(cwd).revparse(['--abbrev-ref', '@{u}']);
+
+            // Might fail, but exception is caught. Just don't run anything relevant after in this block...
+            const localLatest = await git.cwd(cwd).revparse(['HEAD']);
+            const remoteLatest = await git.cwd(cwd).revparse([trackingBranch]);
+            isLatest = localLatest === remoteLatest;
         }
     }
     catch {
@@ -93,7 +105,7 @@ async function getVersion() {
     }
 
     const agent = `SillyTavern:${pkgVersion}:Cohee#1207`;
-    return { agent, pkgVersion, gitRevision, gitBranch };
+    return { agent, pkgVersion, gitRevision, gitBranch, commitDate: commitDate?.trim() ?? null, isLatest };
 }
 
 /**
@@ -365,7 +377,7 @@ function getImages(path) {
 /**
  * Pipe a fetch() response to an Express.js Response, including status code.
  * @param {import('node-fetch').Response} from The Fetch API response to pipe from.
- * @param {Express.Response} to The Express response to pipe to.
+ * @param {import('express').Response} to The Express response to pipe to.
  */
 function forwardFetchResponse(from, to) {
     let statusCode = from.status;
@@ -396,6 +408,64 @@ function forwardFetchResponse(from, to) {
     from.body.on('end', function () {
         console.log('Streaming request finished');
         to.end();
+    });
+}
+
+/**
+ * Makes an HTTP/2 request to the specified endpoint.
+ *
+ * @deprecated Use `node-fetch` if possible.
+ * @param {string} endpoint URL to make the request to
+ * @param {string} method HTTP method to use
+ * @param {string} body Request body
+ * @param {object} headers Request headers
+ * @returns {Promise<string>} Response body
+ */
+function makeHttp2Request(endpoint, method, body, headers) {
+    return new Promise((resolve, reject) => {
+        try {
+            const http2 = require('http2');
+            const url = new URL(endpoint);
+            const client = http2.connect(url.origin);
+
+            const req = client.request({
+                ':method': method,
+                ':path': url.pathname,
+                ...headers,
+            });
+            req.setEncoding('utf8');
+
+            req.on('response', (headers) => {
+                const status = Number(headers[':status']);
+
+                if (status < 200 || status >= 300) {
+                    reject(new Error(`Request failed with status ${status}`));
+                }
+
+                let data = '';
+
+                req.on('data', (chunk) => {
+                    data += chunk;
+                });
+
+                req.on('end', () => {
+                    console.log(data);
+                    resolve(data);
+                });
+            });
+
+            req.on('error', (err) => {
+                reject(err);
+            });
+
+            if (body) {
+                req.write(body);
+            }
+
+            req.end();
+        } catch (e) {
+            reject(e);
+        }
     });
 }
 
@@ -547,4 +617,5 @@ module.exports = {
     excludeKeysByYaml,
     trimV1,
     Cache,
+    makeHttp2Request,
 };

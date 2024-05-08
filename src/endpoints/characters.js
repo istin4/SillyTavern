@@ -7,9 +7,6 @@ const writeFileAtomicSync = require('write-file-atomic').sync;
 const yaml = require('yaml');
 const _ = require('lodash');
 
-const encode = require('png-chunks-encode');
-const extract = require('png-chunks-extract');
-const PNGtext = require('png-chunk-text');
 const jimp = require('jimp');
 
 const { DIRECTORIES, UPLOADS_PATH, AVATAR_WIDTH, AVATAR_HEIGHT } = require('../constants');
@@ -33,7 +30,7 @@ const characterDataCache = new Map();
  * @param {string} input_format - 'png'
  * @returns {Promise<string | undefined>} - Character card data
  */
-async function charaRead(img_url, input_format) {
+async function charaRead(img_url, input_format = 'png') {
     const stat = fs.statSync(img_url);
     const cacheKey = `${img_url}-${stat.mtimeMs}`;
     if (characterDataCache.has(cacheKey)) {
@@ -59,22 +56,12 @@ async function charaWrite(img_url, data, target_img, response = undefined, mes =
             }
         }
         // Read the image, resize, and save it as a PNG into the buffer
-        const image = await tryReadImage(img_url, crop);
+        const inputImage = await tryReadImage(img_url, crop);
 
         // Get the chunks
-        const chunks = extract(image);
-        const tEXtChunks = chunks.filter(chunk => chunk.name === 'tEXt');
+        const outputImage = characterCardParser.write(inputImage, data);
 
-        // Remove all existing tEXt chunks
-        for (let tEXtChunk of tEXtChunks) {
-            chunks.splice(chunks.indexOf(tEXtChunk), 1);
-        }
-        // Add new chunks before the IEND chunk
-        const base64EncodedData = Buffer.from(data, 'utf8').toString('base64');
-        chunks.splice(-1, 0, PNGtext.encode('chara', base64EncodedData));
-        //chunks.splice(-1, 0, text.encode('lorem', 'ipsum'));
-
-        writeFileAtomicSync(DIRECTORIES.characters + target_img + '.png', Buffer.from(encode(chunks)));
+        writeFileAtomicSync(DIRECTORIES.characters + target_img + '.png', outputImage);
         if (response !== undefined) response.send(mes);
         return true;
     } catch (err) {
@@ -152,13 +139,13 @@ const processCharacter = async (item, i) => {
         const img_data = await charaRead(DIRECTORIES.characters + item);
         if (img_data === undefined) throw new Error('Failed to read character file');
 
-        let jsonObject = getCharaCardV2(JSON.parse(img_data));
+        let jsonObject = getCharaCardV2(JSON.parse(img_data), false);
         jsonObject.avatar = item;
         characters[i] = jsonObject;
         characters[i]['json_data'] = img_data;
         const charStat = fs.statSync(path.join(DIRECTORIES.characters, item));
-        characters[i]['date_added'] = charStat.birthtimeMs;
-        characters[i]['create_date'] = jsonObject['create_date'] || humanizedISO8601DateTime(charStat.birthtimeMs);
+        characters[i]['date_added'] = charStat.ctimeMs;
+        characters[i]['create_date'] = jsonObject['create_date'] || humanizedISO8601DateTime(charStat.ctimeMs);
         const char_dir = path.join(DIRECTORIES.chats, item.replace('.png', ''));
 
         const { chatSize, dateLastChat } = calculateChatSize(char_dir);
@@ -183,15 +170,30 @@ const processCharacter = async (item, i) => {
     }
 };
 
-function getCharaCardV2(jsonObject) {
+/**
+ * Convert a character object to Spec V2 format.
+ * @param {object} jsonObject Character object
+ * @param {boolean} hoistDate Will set the chat and create_date fields to the current date if they are missing
+ * @returns {object} Character object in Spec V2 format
+ */
+function getCharaCardV2(jsonObject, hoistDate = true) {
     if (jsonObject.spec === undefined) {
         jsonObject = convertToV2(jsonObject);
+
+        if (hoistDate && !jsonObject.create_date) {
+            jsonObject.create_date = humanizedISO8601DateTime();
+        }
     } else {
         jsonObject = readFromV2(jsonObject);
     }
     return jsonObject;
 }
 
+/**
+ * Convert a character object to Spec V2 format.
+ * @param {object} char Character object
+ * @returns {object} Character object in Spec V2 format
+ */
 function convertToV2(char) {
     // Simulate incoming data from frontend form
     const result = charaFormatData({
@@ -208,11 +210,13 @@ function convertToV2(char) {
         creator: char.creator,
         tags: char.tags,
         depth_prompt_prompt: char.depth_prompt_prompt,
-        depth_prompt_response: char.depth_prompt_response,
+        depth_prompt_depth: char.depth_prompt_depth,
+        depth_prompt_role: char.depth_prompt_role,
     });
 
     result.chat = char.chat ?? humanizedISO8601DateTime();
-    result.create_date = char.create_date ?? humanizedISO8601DateTime();
+    result.create_date = char.create_date;
+
     return result;
 }
 
@@ -300,6 +304,7 @@ function charaFormatData(data) {
     _.set(char, 'chat', data.ch_name + ' - ' + humanizedISO8601DateTime());
     _.set(char, 'talkativeness', data.talkativeness);
     _.set(char, 'fav', data.fav == 'true');
+    _.set(char, 'tags', typeof data.tags == 'string' ? (data.tags.split(',').map(x => x.trim()).filter(x => x)) : data.tags || []);
 
     // Spec V2 fields
     _.set(char, 'spec', 'chara_card_v2');
@@ -327,9 +332,12 @@ function charaFormatData(data) {
 
     // Spec extension: depth prompt
     const depth_default = 4;
+    const role_default = 'system';
     const depth_value = !isNaN(Number(data.depth_prompt_depth)) ? Number(data.depth_prompt_depth) : depth_default;
+    const role_value = data.depth_prompt_role ?? role_default;
     _.set(char, 'data.extensions.depth_prompt.prompt', data.depth_prompt_prompt ?? '');
     _.set(char, 'data.extensions.depth_prompt.depth', depth_value);
+    _.set(char, 'data.extensions.depth_prompt.role', role_value);
     //_.set(char, 'data.extensions.create_date', humanizedISO8601DateTime());
     //_.set(char, 'data.extensions.avatar', 'none');
     //_.set(char, 'data.extensions.chat', data.ch_name + ' - ' + humanizedISO8601DateTime());
@@ -350,6 +358,16 @@ function charaFormatData(data) {
 
         } catch {
             console.debug(`Failed to read world info file: ${data.world}. Character book will not be available.`);
+        }
+    }
+
+    if (data.extensions) {
+        try {
+            const extensions = JSON.parse(data.extensions);
+            // Deep merge the extensions object
+            _.set(char, 'data.extensions', deepMerge(char.data.extensions, extensions));
+        } catch {
+            console.debug(`Failed to parse extensions JSON: ${data.extensions}`);
         }
     }
 
@@ -388,6 +406,11 @@ function convertWorldInfoToCharacterBook(name, entries) {
                 selectiveLogic: entry.selectiveLogic ?? 0,
                 group: entry.group ?? '',
                 prevent_recursion: entry.preventRecursion ?? false,
+                scan_depth: entry.scanDepth ?? null,
+                match_whole_words: entry.matchWholeWords ?? null,
+                case_sensitive: entry.caseSensitive ?? null,
+                automation_id: entry.automationId ?? '',
+                role: entry.role ?? 0,
             },
         };
 
@@ -592,10 +615,10 @@ router.post('/edit-attribute', jsonParser, async function (request, response) {
  * @returns {void}
  * */
 router.post('/merge-attributes', jsonParser, async function (request, response) {
-    const update = request.body;
-    const avatarPath = path.join(DIRECTORIES.characters, update.avatar);
-
     try {
+        const update = request.body;
+        const avatarPath = path.join(DIRECTORIES.characters, update.avatar);
+
         const pngStringData = await charaRead(avatarPath);
 
         if (!pngStringData) {
@@ -792,6 +815,17 @@ function getPngName(file) {
     return file;
 }
 
+/**
+ * Gets the preserved name for the uploaded file if the request is valid.
+ * @param {import("express").Request} request - Express request object
+ * @returns {string | undefined} - The preserved name if the request is valid, otherwise undefined
+ */
+function getPreservedName(request) {
+    return request.body.file_type === 'png' && request.body.preserve_file_name === 'true' && request.file?.originalname
+        ? path.parse(request.file.originalname).name
+        : undefined;
+}
+
 router.post('/import', urlencodedParser, async function (request, response) {
     if (!request.body || !request.file) return response.sendStatus(400);
 
@@ -799,6 +833,7 @@ router.post('/import', urlencodedParser, async function (request, response) {
     let filedata = request.file;
     let uploadPath = path.join(UPLOADS_PATH, filedata.filename);
     let format = request.body.file_type;
+    const preservedFileName = getPreservedName(request);
 
     if (format == 'yaml' || format == 'yml') {
         try {
@@ -890,7 +925,7 @@ router.post('/import', urlencodedParser, async function (request, response) {
             let jsonData = JSON.parse(img_data);
 
             jsonData.name = sanitize(jsonData.data?.name || jsonData.name);
-            png_name = getPngName(jsonData.name);
+            png_name = preservedFileName || getPngName(jsonData.name);
 
             if (jsonData.spec !== undefined) {
                 console.log('Found a v2 character file.');
@@ -977,7 +1012,7 @@ router.post('/duplicate', jsonParser, async function (request, response) {
 
         fs.copyFileSync(filename, newFilename);
         console.log(`${filename} was copied to ${newFilename}`);
-        response.sendStatus(200);
+        response.send({ path: path.parse(newFilename).base });
     }
     catch (error) {
         console.error(error);
@@ -1004,7 +1039,7 @@ router.post('/export', jsonParser, async function (request, response) {
                 let json = await charaRead(filename);
                 if (json === undefined) return response.sendStatus(400);
                 let jsonObject = getCharaCardV2(JSON.parse(json));
-                return response.type('json').send(jsonObject);
+                return response.type('json').send(JSON.stringify(jsonObject, null, 4));
             }
             catch {
                 return response.sendStatus(400);

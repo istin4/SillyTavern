@@ -6,6 +6,7 @@ import { QuickReplySet } from '../src/QuickReplySet.js';
 import { QuickReplySettings } from '../src/QuickReplySettings.js';
 // eslint-disable-next-line no-unused-vars
 import { SettingsUi } from '../src/ui/SettingsUi.js';
+import { onlyUnique } from '../../../utils.js';
 
 export class QuickReplyApi {
     /**@type {QuickReplySettings}*/ settings;
@@ -190,6 +191,8 @@ export class QuickReplyApi {
      * @param {Boolean} [props.executeOnUser] whether to execute the quick reply after a user has sent a message
      * @param {Boolean} [props.executeOnAi] whether to execute the quick reply after the AI has sent a message
      * @param {Boolean} [props.executeOnChatChange] whether to execute the quick reply when a new chat is loaded
+     * @param {Boolean} [props.executeOnGroupMemberDraft] whether to execute the quick reply when a group member is selected
+     * @param {String} [props.automationId] when not empty, the quick reply will be executed when the WI with the given automation ID is activated
      * @returns {QuickReply} the new quick reply
      */
     createQuickReply(setName, label, {
@@ -200,6 +203,8 @@ export class QuickReplyApi {
         executeOnUser,
         executeOnAi,
         executeOnChatChange,
+        executeOnGroupMemberDraft,
+        automationId,
     } = {}) {
         const set = this.getSetByName(setName);
         if (!set) {
@@ -214,6 +219,8 @@ export class QuickReplyApi {
         qr.executeOnUser = executeOnUser ?? false;
         qr.executeOnAi = executeOnAi ?? false;
         qr.executeOnChatChange = executeOnChatChange ?? false;
+        qr.executeOnGroupMemberDraft = executeOnGroupMemberDraft ?? false;
+        qr.automationId = automationId ?? '';
         qr.onUpdate();
         return qr;
     }
@@ -232,6 +239,8 @@ export class QuickReplyApi {
      * @param {Boolean} [props.executeOnUser] whether to execute the quick reply after a user has sent a message
      * @param {Boolean} [props.executeOnAi] whether to execute the quick reply after the AI has sent a message
      * @param {Boolean} [props.executeOnChatChange] whether to execute the quick reply when a new chat is loaded
+     * @param {Boolean} [props.executeOnGroupMemberDraft] whether to execute the quick reply when a group member is selected
+     * @param {String} [props.automationId] when not empty, the quick reply will be executed when the WI with the given automation ID is activated
      * @returns {QuickReply} the altered quick reply
      */
     updateQuickReply(setName, label, {
@@ -243,19 +252,23 @@ export class QuickReplyApi {
         executeOnUser,
         executeOnAi,
         executeOnChatChange,
+        executeOnGroupMemberDraft,
+        automationId,
     } = {}) {
         const qr = this.getQrByLabel(setName, label);
         if (!qr) {
             throw new Error(`No quick reply with label "${label}" in set "${setName}" found.`);
         }
-        qr.label = newLabel ?? qr.label;
-        qr.message = message ?? qr.message;
-        qr.title = title ?? qr.title;
+        qr.updateLabel(newLabel ?? qr.label);
+        qr.updateMessage(message ?? qr.message);
+        qr.updateTitle(title ?? qr.title);
         qr.isHidden = isHidden ?? qr.isHidden;
         qr.executeOnStartup = executeOnStartup ?? qr.executeOnStartup;
         qr.executeOnUser = executeOnUser ?? qr.executeOnUser;
         qr.executeOnAi = executeOnAi ?? qr.executeOnAi;
         qr.executeOnChatChange = executeOnChatChange ?? qr.executeOnChatChange;
+        qr.executeOnGroupMemberDraft = executeOnGroupMemberDraft ?? qr.executeOnGroupMemberDraft;
+        qr.automationId = automationId ?? qr.automationId;
         qr.onUpdate();
         return qr;
     }
@@ -447,5 +460,21 @@ export class QuickReplyApi {
             throw new Error(`No quick reply set with name "${name}" found.`);
         }
         return set.qrList.map(it=>it.label);
+    }
+
+    /**
+     * Gets a list of all Automation IDs used by quick replies.
+     *
+     * @returns {String[]} array with all automation IDs used by quick replies
+     */
+    listAutomationIds() {
+        return this
+            .listSets()
+            .flatMap(it => ({ set: it, qrs: this.listQuickReplies(it) }))
+            .map(it => it.qrs?.map(qr => this.getQrByLabel(it.set, qr)?.automationId))
+            .flat()
+            .filter(Boolean)
+            .filter(onlyUnique)
+            .map(String);
     }
 }

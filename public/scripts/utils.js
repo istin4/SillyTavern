@@ -43,6 +43,10 @@ export function isValidUrl(value) {
 export function stringToRange(input, min, max) {
     let start, end;
 
+    if (typeof input !== 'string') {
+        input = String(input);
+    }
+
     if (input.includes('-')) {
         const parts = input.split('-');
         start = parts[0] ? parseInt(parts[0], 10) : NaN;
@@ -471,14 +475,18 @@ export function sortByCssOrder(a, b) {
  * trimToEndSentence('Hello, world! I am from'); // 'Hello, world!'
  */
 export function trimToEndSentence(input, include_newline = false) {
-    const punctuation = new Set(['.', '!', '?', '*', '"', ')', '}', '`', ']', '$', '。', '！', '？', '”', '）', '】', '】', '’', '」', '】']); // extend this as you see fit
+    const punctuation = new Set(['.', '!', '?', '*', '"', ')', '}', '`', ']', '$', '。', '！', '？', '”', '）', '】', '’', '」']); // extend this as you see fit
     let last = -1;
 
     for (let i = input.length - 1; i >= 0; i--) {
         const char = input[i];
 
         if (punctuation.has(char)) {
-            last = i;
+            if (i > 0 && /[\s\n]/.test(input[i - 1])) {
+                last = i - 1;
+            } else {
+                last = i;
+            }
             break;
         }
 
@@ -598,7 +606,25 @@ export function isOdd(number) {
     return number % 2 !== 0;
 }
 
+const dateCache = new Map();
+
+/**
+ * Cached version of moment() to avoid re-parsing the same date strings.
+ * Important: Moment objects are mutable, so use clone() before modifying them!
+ * @param {any} timestamp String or number representing a date.
+ * @returns {*} Moment object
+ */
 export function timestampToMoment(timestamp) {
+    if (dateCache.has(timestamp)) {
+        return dateCache.get(timestamp);
+    }
+
+    const moment = parseTimestamp(timestamp);
+    dateCache.set(timestamp, moment);
+    return moment;
+}
+
+function parseTimestamp(timestamp) {
     if (!timestamp) {
         return moment.invalid();
     }
@@ -664,7 +690,7 @@ export function splitRecursive(input, length, delimiters = ['\n\n', '\n', ' ', '
 
     const flatParts = parts.flatMap(p => {
         if (p.length < length) return p;
-        return splitRecursive(input, length, delimiters.slice(1));
+        return splitRecursive(p, length, delimiters.slice(1));
     });
 
     // Merge short chunks
@@ -966,11 +992,11 @@ export async function saveBase64AsFile(base64Data, characterName, filename = '',
     const requestBody = {
         image: dataURL,
         ch_name: characterName,
-        filename: filename,
+        filename: String(filename).replace(/\./g, '_'),
     };
 
     // Send the data URL to your backend using fetch
-    const response = await fetch('/uploadimage', {
+    const response = await fetch('/api/images/upload', {
         method: 'POST',
         body: JSON.stringify(requestBody),
         headers: {
@@ -1022,14 +1048,50 @@ export function loadFileToDocument(url, type) {
 }
 
 /**
+ * Ensure that we can import war crime image formats like WEBP and AVIF.
+ * @param {File} file Input file
+ * @returns {Promise<File>} A promise that resolves to the supported file.
+ */
+export async function ensureImageFormatSupported(file) {
+    const supportedTypes = [
+        'image/jpeg',
+        'image/png',
+        'image/bmp',
+        'image/tiff',
+        'image/gif',
+        'image/apng',
+    ];
+
+    if (supportedTypes.includes(file.type) || !file.type.startsWith('image/')) {
+        return file;
+    }
+
+    return await convertImageFile(file, 'image/png');
+}
+
+/**
+ * Converts an image file to a given format.
+ * @param {File} inputFile File to convert
+ * @param {string} type Target file type
+ * @returns {Promise<File>} A promise that resolves to the converted file.
+ */
+export async function convertImageFile(inputFile, type = 'image/png') {
+    const base64 = await getBase64Async(inputFile);
+    const thumbnail = await createThumbnail(base64, null, null, type);
+    const blob = await fetch(thumbnail).then(res => res.blob());
+    const outputFile = new File([blob], inputFile.name, { type });
+    return outputFile;
+}
+
+/**
  * Creates a thumbnail from a data URL.
  * @param {string} dataUrl The data URL encoded data of the image.
- * @param {number} maxWidth The maximum width of the thumbnail.
- * @param {number} maxHeight The maximum height of the thumbnail.
+ * @param {number|null} maxWidth The maximum width of the thumbnail.
+ * @param {number|null} maxHeight The maximum height of the thumbnail.
  * @param {string} [type='image/jpeg'] The type of the thumbnail.
  * @returns {Promise<string>} A promise that resolves to the thumbnail data URL.
  */
-export function createThumbnail(dataUrl, maxWidth, maxHeight, type = 'image/jpeg') {
+export function createThumbnail(dataUrl, maxWidth = null, maxHeight = null, type = 'image/jpeg') {
     // Someone might pass in a base64 encoded string without the data URL prefix
     if (!dataUrl.includes('data:')) {
         dataUrl = `data:image/jpeg;base64,${dataUrl}`;
@@ -1046,6 +1108,16 @@ export function createThumbnail(dataUrl, maxWidth, maxHeight, type = 'image/jpeg
             const aspectRatio = img.width / img.height;
             let thumbnailWidth = maxWidth;
             let thumbnailHeight = maxHeight;
+
+            if (maxWidth === null) {
+                thumbnailWidth = img.width;
+                maxWidth = img.width;
+            }
+
+            if (maxHeight === null) {
+                thumbnailHeight = img.height;
+                maxHeight = img.height;
+            }
 
             if (img.width > img.height) {
                 thumbnailHeight = maxWidth / aspectRatio;
@@ -1107,11 +1179,13 @@ export function uuidv4() {
     });
 }
 
-function postProcessText(text) {
+function postProcessText(text, collapse = true) {
     // Collapse multiple newlines into one
-    text = collapseNewlines(text);
-    // Trim leading and trailing whitespace, and remove empty lines
-    text = text.split('\n').map(l => l.trim()).filter(Boolean).join('\n');
+    if (collapse) {
+        text = collapseNewlines(text);
+        // Trim leading and trailing whitespace, and remove empty lines
+        text = text.split('\n').map(l => l.trim()).filter(Boolean).join('\n');
+    }
     // Remove carriage returns
     text = text.replace(/\r/g, '');
     // Normalize unicode spaces
@@ -1120,6 +1194,25 @@ function postProcessText(text) {
     text = text.replace(/ {2,}/g, ' ');
     // Remove leading and trailing spaces
     text = text.trim();
+    return text;
+}
+
+/**
+ * Uses Readability.js to parse the text from a web page.
+ * @param {Document} document HTML document
+ * @param {string} [textSelector='body'] The fallback selector for the text to parse.
+ * @returns {Promise<string>} A promise that resolves to the parsed text.
+ */
+export async function getReadableText(document, textSelector = 'body') {
+    if (isProbablyReaderable(document)) {
+        const parser = new Readability(document);
+        const article = parser.parse();
+        return postProcessText(article.textContent, false);
+    }
+
+    const elements = document.querySelectorAll(textSelector);
+    const rawText = Array.from(elements).map(e => e.textContent).join('\n');
+    const text = postProcessText(rawText);
     return text;
 }
 
@@ -1184,10 +1277,7 @@ export async function extractTextFromHTML(blob, textSelector = 'body') {
     const html = await blob.text();
     const domParser = new DOMParser();
     const document = domParser.parseFromString(DOMPurify.sanitize(html), 'text/html');
-    const elements = document.querySelectorAll(textSelector);
-    const rawText = Array.from(elements).map(e => e.textContent).join('\n');
-    const text = postProcessText(rawText);
-    return text;
+    return await getReadableText(document, textSelector);
 }
 
 /**
@@ -1201,6 +1291,30 @@ export async function extractTextFromMarkdown(blob) {
     const html = converter.makeHtml(markdown);
     const domParser = new DOMParser();
     const document = domParser.parseFromString(DOMPurify.sanitize(html), 'text/html');
-    const text = postProcessText(document.body.textContent);
+    const text = postProcessText(document.body.textContent, false);
     return text;
+}
+
+/**
+ * Sets a value in an object by a path.
+ * @param {object} obj Object to set value in
+ * @param {string} path Key path
+ * @param {any} value Value to set
+ * @returns {void}
+ */
+export function setValueByPath(obj, path, value) {
+    const keyParts = path.split('.');
+    let currentObject = obj;
+
+    for (let i = 0; i < keyParts.length - 1; i++) {
+        const part = keyParts[i];
+
+        if (!Object.hasOwn(currentObject, part)) {
+            currentObject[part] = {};
+        }
+
+        currentObject = currentObject[part];
+    }
+
+    currentObject[keyParts[keyParts.length - 1]] = value;
 }

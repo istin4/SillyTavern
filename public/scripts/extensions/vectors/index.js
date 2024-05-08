@@ -1,7 +1,25 @@
-import { eventSource, event_types, extension_prompt_types, getCurrentChatId, getRequestHeaders, is_send_press, saveSettingsDebounced, setExtensionPrompt, substituteParams } from '../../../script.js';
-import { ModuleWorkerWrapper, extension_settings, getContext, renderExtensionTemplate } from '../../extensions.js';
+import {
+    eventSource,
+    event_types,
+    extension_prompt_types,
+    getCurrentChatId,
+    getRequestHeaders,
+    is_send_press,
+    saveSettingsDebounced,
+    setExtensionPrompt,
+    substituteParams,
+    generateRaw,
+} from '../../../script.js';
+import {
+    ModuleWorkerWrapper,
+    extension_settings,
+    getContext,
+    modules,
+    renderExtensionTemplateAsync,
+    doExtrasFetch, getApiUrl,
+} from '../../extensions.js';
 import { collapseNewlines } from '../../power-user.js';
-import { SECRET_KEYS, secret_state } from '../../secrets.js';
+import { SECRET_KEYS, secret_state, writeSecret } from '../../secrets.js';
 import { debounce, getStringHash as calculateHash, waitUntilCondition, onlyUnique, splitRecursive } from '../../utils.js';
 
 const MODULE_NAME = 'vectors';
@@ -12,6 +30,12 @@ const settings = {
     // For both
     source: 'transformers',
     include_wi: false,
+    togetherai_model: 'togethercomputer/m2-bert-80M-32k-retrieval',
+    openai_model: 'text-embedding-ada-002',
+    summarize: false,
+    summarize_sent: false,
+    summary_source: 'main',
+    summary_prompt: 'Pause your roleplay. Summarize the most important parts of the message. Limit yourself to 250 words or less. Your response should include nothing but the summary.',
 
     // For chats
     enabled_chats: false,
@@ -111,6 +135,56 @@ function splitByChunks(items) {
     return chunkedItems;
 }
 
+async function summarizeExtra(hashedMessages) {
+    for (const element of hashedMessages) {
+        try {
+            const url = new URL(getApiUrl());
+            url.pathname = '/api/summarize';
+
+            const apiResult = await doExtrasFetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Bypass-Tunnel-Reminder': 'bypass',
+                },
+                body: JSON.stringify({
+                    text: element.text,
+                    params: {},
+                }),
+            });
+
+            if (apiResult.ok) {
+                const data = await apiResult.json();
+                element.text = data.summary;
+            }
+        }
+        catch (error) {
+            console.log(error);
+        }
+    }
+
+    return hashedMessages;
+}
+
+async function summarizeMain(hashedMessages) {
+    for (const element of hashedMessages) {
+        element.text = await generateRaw(element.text, '', false, false, settings.summary_prompt);
+    }
+
+    return hashedMessages;
+}
+
+async function summarize(hashedMessages, endpoint = 'main') {
+    switch (endpoint) {
+        case 'main':
+            return await summarizeMain(hashedMessages);
+        case 'extras':
+            return await summarizeExtra(hashedMessages);
+        default:
+            console.error('Unsupported endpoint', endpoint);
+    }
+}
+
 async function synchronizeChat(batchSize = 5) {
     if (!settings.enabled_chats) {
         return -1;
@@ -133,14 +207,20 @@ async function synchronizeChat(batchSize = 5) {
             return -1;
         }
 
-        const hashedMessages = context.chat.filter(x => !x.is_system).map(x => ({ text: String(x.mes), hash: getStringHash(x.mes), index: context.chat.indexOf(x) }));
+        let hashedMessages = context.chat.filter(x => !x.is_system).map(x => ({ text: String(substituteParams(x.mes)), hash: getStringHash(substituteParams(x.mes)), index: context.chat.indexOf(x) }));
         const hashesInCollection = await getSavedHashes(chatId);
+
+        if (settings.summarize) {
+            hashedMessages = await summarize(hashedMessages, settings.summary_source);
+        }
 
         const newVectorItems = hashedMessages.filter(x => !hashesInCollection.includes(x.hash));
         const deletedHashes = hashesInCollection.filter(x => !hashedMessages.some(y => y.hash === x));
 
+
         if (newVectorItems.length > 0) {
             const chunkedBatch = splitByChunks(newVectorItems.slice(0, batchSize));
+
             console.log(`Vectors: Found ${newVectorItems.length} new items. Processing ${batchSize}...`);
             await insertVectorItems(chatId, chunkedBatch);
         }
@@ -152,8 +232,25 @@ async function synchronizeChat(batchSize = 5) {
 
         return newVectorItems.length - batchSize;
     } catch (error) {
+        /**
+         * Gets the error message for a given cause
+         * @param {string} cause Error cause key
+         * @returns {string} Error message
+         */
+        function getErrorMessage(cause) {
+            switch (cause) {
+                case 'api_key_missing':
+                    return 'API key missing. Save it in the "API Connections" panel.';
+                case 'extras_module_missing':
+                    return 'Extras API must provide an "embeddings" module.';
+                default:
+                    return 'Check server console for more details';
+            }
+        }
+
         console.error('Vectors: Failed to synchronize chat', error);
-        const message = error.cause === 'api_key_missing' ? 'API key missing. Save it in the "API Connections" panel.' : 'Check server console for more details';
+
+        const message = getErrorMessage(error.cause);
         toastr.error(message, 'Vectorization failed');
         return -1;
     } finally {
@@ -225,7 +322,7 @@ async function processFiles(chat) {
                 await vectorizeFile(fileText, fileName, collectionId);
             }
 
-            const queryText = getQueryText(chat);
+            const queryText = await getQueryText(chat);
             const fileChunks = await retrieveFileChunks(queryText, collectionId);
 
             // Wrap it back in a code block
@@ -246,7 +343,7 @@ async function retrieveFileChunks(queryText, collectionId) {
     console.debug(`Vectors: Retrieving file chunks for collection ${collectionId}`, queryText);
     const queryResults = await queryCollection(collectionId, queryText, settings.chunk_count);
     console.debug(`Vectors: Retrieved ${queryResults.hashes.length} file chunks for collection ${collectionId}`, queryResults);
-    const metadata = queryResults.metadata.filter(x => x.text).sort((a, b) => a.index - b.index).map(x => x.text);
+    const metadata = queryResults.metadata.filter(x => x.text).sort((a, b) => a.index - b.index).map(x => x.text).filter(onlyUnique);
     const fileText = metadata.join('\n');
 
     return fileText;
@@ -302,7 +399,7 @@ async function rearrangeChat(chat) {
             return;
         }
 
-        const queryText = getQueryText(chat);
+        const queryText = await getQueryText(chat);
 
         if (queryText.length === 0) {
             console.debug('Vectors: No text to query');
@@ -310,7 +407,7 @@ async function rearrangeChat(chat) {
         }
 
         // Get the most relevant messages, excluding the last few
-        const queryResults = await queryCollection(chatId, queryText, settings.query);
+        const queryResults = await queryCollection(chatId, queryText, settings.insert);
         const queryHashes = queryResults.hashes.filter(onlyUnique);
         const queriedMessages = [];
         const insertedHashes = new Set();
@@ -320,7 +417,7 @@ async function rearrangeChat(chat) {
             if (retainMessages.includes(message) || !message.mes) {
                 continue;
             }
-            const hash = getStringHash(message.mes);
+            const hash = getStringHash(substituteParams(message.mes));
             if (queryHashes.includes(hash) && !insertedHashes.has(hash)) {
                 queriedMessages.push(message);
                 insertedHashes.add(hash);
@@ -329,7 +426,7 @@ async function rearrangeChat(chat) {
 
         // Rearrange queried messages to match query order
         // Order is reversed because more relevant are at the lower indices
-        queriedMessages.sort((a, b) => queryHashes.indexOf(getStringHash(b.mes)) - queryHashes.indexOf(getStringHash(a.mes)));
+        queriedMessages.sort((a, b) => queryHashes.indexOf(getStringHash(substituteParams(b.mes))) - queryHashes.indexOf(getStringHash(substituteParams(a.mes))));
 
         // Remove queried messages from the original chat array
         for (const message of chat) {
@@ -368,15 +465,21 @@ const onChatEvent = debounce(async () => await moduleWorker.update(), 500);
 /**
  * Gets the text to query from the chat
  * @param {object[]} chat Chat messages
- * @returns {string} Text to query
+ * @returns {Promise<string>} Text to query
  */
-function getQueryText(chat) {
+async function getQueryText(chat) {
     let queryText = '';
     let i = 0;
 
-    for (const message of chat.slice().reverse()) {
-        if (message.mes) {
-            queryText += message.mes + '\n';
+    let hashedMessages = chat.map(x => ({ text: String(substituteParams(x.mes)) }));
+
+    if (settings.summarize && settings.summarize_sent) {
+        hashedMessages = await summarize(hashedMessages, settings.summary_source);
+    }
+
+    for (const message of hashedMessages.slice().reverse()) {
+        if (message.text) {
+            queryText += message.text + '\n';
             i++;
         }
 
@@ -411,6 +514,56 @@ async function getSavedHashes(collectionId) {
     return hashes;
 }
 
+function getVectorHeaders() {
+    const headers = getRequestHeaders();
+    switch (settings.source) {
+        case 'extras':
+            addExtrasHeaders(headers);
+            break;
+        case 'togetherai':
+            addTogetherAiHeaders(headers);
+            break;
+        case 'openai':
+            addOpenAiHeaders(headers);
+            break;
+        default:
+            break;
+    }
+    return headers;
+}
+
+/**
+ * Add headers for the Extras API source.
+ * @param {object} headers Headers object
+ */
+function addExtrasHeaders(headers) {
+    console.log(`Vector source is extras, populating API URL: ${extension_settings.apiUrl}`);
+    Object.assign(headers, {
+        'X-Extras-Url': extension_settings.apiUrl,
+        'X-Extras-Key': extension_settings.apiKey,
+    });
+}
+
+/**
+ * Add headers for the TogetherAI API source.
+ * @param {object} headers Headers object
+ */
+function addTogetherAiHeaders(headers) {
+    Object.assign(headers, {
+        'X-Togetherai-Model': extension_settings.vectors.togetherai_model,
+    });
+}
+
+/**
+ * Add headers for the OpenAI API source.
+ * @param {object} headers Header object
+ */
+function addOpenAiHeaders(headers) {
+    Object.assign(headers, {
+        'X-OpenAI-Model': extension_settings.vectors.openai_model,
+    });
+}
+
 /**
  * Inserts vector items into a collection
  * @param {string} collectionId - The collection to insert into
@@ -420,13 +573,21 @@ async function getSavedHashes(collectionId) {
 async function insertVectorItems(collectionId, items) {
     if (settings.source === 'openai' && !secret_state[SECRET_KEYS.OPENAI] ||
         settings.source === 'palm' && !secret_state[SECRET_KEYS.MAKERSUITE] ||
-        settings.source === 'mistral' && !secret_state[SECRET_KEYS.MISTRALAI]) {
+        settings.source === 'mistral' && !secret_state[SECRET_KEYS.MISTRALAI] ||
+        settings.source === 'togetherai' && !secret_state[SECRET_KEYS.TOGETHERAI] ||
+        settings.source === 'nomicai' && !secret_state[SECRET_KEYS.NOMICAI]) {
         throw new Error('Vectors: API key missing', { cause: 'api_key_missing' });
     }
 
+    if (settings.source === 'extras' && !modules.includes('embeddings')) {
+        throw new Error('Vectors: Embeddings module missing', { cause: 'extras_module_missing' });
+    }
+
+    const headers = getVectorHeaders();
+
     const response = await fetch('/api/vector/insert', {
         method: 'POST',
-        headers: getRequestHeaders(),
+        headers: headers,
         body: JSON.stringify({
             collectionId: collectionId,
             items: items,
@@ -468,9 +629,11 @@ async function deleteVectorItems(collectionId, hashes) {
  * @returns {Promise<{ hashes: number[], metadata: object[]}>} - Hashes of the results
  */
 async function queryCollection(collectionId, searchText, topK) {
+    const headers = getVectorHeaders();
+
     const response = await fetch('/api/vector/query', {
         method: 'POST',
-        headers: getRequestHeaders(),
+        headers: headers,
         body: JSON.stringify({
             collectionId: collectionId,
             searchText: searchText,
@@ -483,14 +646,18 @@ async function queryCollection(collectionId, searchText, topK) {
         throw new Error(`Failed to query collection ${collectionId}`);
     }
 
-    const results = await response.json();
-    return results;
+    return await response.json();
 }
 
+/**
+ * Purges the vector index for a collection.
+ * @param {string} collectionId Collection ID to purge
+ * @returns <Promise<boolean>> True if deleted, false if not
+ */
 async function purgeVectorIndex(collectionId) {
     try {
         if (!settings.enabled_chats) {
-            return;
+            return true;
         }
 
         const response = await fetch('/api/vector/purge', {
@@ -506,15 +673,19 @@ async function purgeVectorIndex(collectionId) {
         }
 
         console.log(`Vectors: Purged vector index for collection ${collectionId}`);
-
+        return true;
     } catch (error) {
         console.error('Vectors: Failed to purge', error);
+        return false;
     }
 }
 
 function toggleSettings() {
     $('#vectors_files_settings').toggle(!!settings.enabled_files);
     $('#vectors_chats_settings').toggle(!!settings.enabled_chats);
+    $('#together_vectorsModel').toggle(settings.source === 'togetherai');
+    $('#openai_vectorsModel').toggle(settings.source === 'openai');
+    $('#nomicai_apiKey').toggle(settings.source === 'nomicai');
 }
 
 async function onPurgeClick() {
@@ -523,8 +694,11 @@ async function onPurgeClick() {
         toastr.info('No chat selected', 'Purge aborted');
         return;
     }
-    await purgeVectorIndex(chatId);
-    toastr.success('Vector index purged', 'Purge successful');
+    if (await purgeVectorIndex(chatId)) {
+        toastr.success('Vector index purged', 'Purge successful');
+    } else {
+        toastr.error('Failed to purge vector index', 'Purge failed');
+    }
 }
 
 async function onViewStatsClick() {
@@ -546,7 +720,7 @@ async function onViewStatsClick() {
 
     const chat = getContext().chat;
     for (const message of chat) {
-        if (hashesInCollection.includes(getStringHash(message.mes))) {
+        if (hashesInCollection.includes(getStringHash(substituteParams(message.mes)))) {
             const messageElement = $(`.mes[mesid="${chat.indexOf(message)}"]`);
             messageElement.addClass('vectorized');
         }
@@ -565,15 +739,18 @@ jQuery(async () => {
     }
 
     Object.assign(settings, extension_settings.vectors);
+
     // Migrate from TensorFlow to Transformers
     settings.source = settings.source !== 'local' ? settings.source : 'transformers';
-    $('#extensions_settings2').append(renderExtensionTemplate(MODULE_NAME, 'settings'));
+    const template = await renderExtensionTemplateAsync(MODULE_NAME, 'settings');
+    $('#extensions_settings2').append(template);
     $('#vectors_enabled_chats').prop('checked', settings.enabled_chats).on('input', () => {
         settings.enabled_chats = $('#vectors_enabled_chats').prop('checked');
         Object.assign(extension_settings.vectors, settings);
         saveSettingsDebounced();
         toggleSettings();
     });
+    $('#vectors_modelWarning').hide();
     $('#vectors_enabled_files').prop('checked', settings.enabled_files).on('input', () => {
         settings.enabled_files = $('#vectors_enabled_files').prop('checked');
         Object.assign(extension_settings.vectors, settings);
@@ -582,6 +759,26 @@ jQuery(async () => {
     });
     $('#vectors_source').val(settings.source).on('change', () => {
         settings.source = String($('#vectors_source').val());
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+        toggleSettings();
+    });
+    $('#api_key_nomicai').on('change', () => {
+        const nomicKey = String($('#api_key_nomicai').val()).trim();
+        if (nomicKey.length) {
+            writeSecret(SECRET_KEYS.NOMICAI, nomicKey);
+        }
+        saveSettingsDebounced();
+    });
+    $('#vectors_togetherai_model').val(settings.togetherai_model).on('change', () => {
+        $('#vectors_modelWarning').show();
+        settings.togetherai_model = String($('#vectors_togetherai_model').val());
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+    $('#vectors_openai_model').val(settings.openai_model).on('change', () => {
+        $('#vectors_modelWarning').show();
+        settings.openai_model = String($('#vectors_openai_model').val());
         Object.assign(extension_settings.vectors, settings);
         saveSettingsDebounced();
     });
@@ -644,11 +841,39 @@ jQuery(async () => {
         saveSettingsDebounced();
     });
 
+    $('#vectors_summarize').prop('checked', settings.summarize).on('input', () => {
+        settings.summarize = !!$('#vectors_summarize').prop('checked');
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+
+    $('#vectors_summarize_user').prop('checked', settings.summarize_sent).on('input', () => {
+        settings.summarize_sent = !!$('#vectors_summarize_user').prop('checked');
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+
+    $('#vectors_summary_source').val(settings.summary_source).on('change', () => {
+        settings.summary_source = String($('#vectors_summary_source').val());
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+
+    $('#vectors_summary_prompt').val(settings.summary_prompt).on('input', () => {
+        settings.summary_prompt = String($('#vectors_summary_prompt').val());
+        Object.assign(extension_settings.vectors, settings);
+        saveSettingsDebounced();
+    });
+
     $('#vectors_message_chunk_size').val(settings.message_chunk_size).on('input', () => {
         settings.message_chunk_size = Number($('#vectors_message_chunk_size').val());
         Object.assign(extension_settings.vectors, settings);
         saveSettingsDebounced();
     });
+
+    const validSecret = !!secret_state[SECRET_KEYS.NOMICAI];
+    const placeholder = validSecret ? '✔️ Key saved' : '❌ Missing key';
+    $('#api_key_nomicai').attr('placeholder', placeholder);
 
     toggleSettings();
     eventSource.on(event_types.MESSAGE_DELETED, onChatEvent);

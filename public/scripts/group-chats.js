@@ -9,9 +9,11 @@ import {
     saveBase64AsFile,
     PAGINATION_TEMPLATE,
     getBase64Async,
+    resetScrollHeight,
+    initScrollHeight,
 } from './utils.js';
 import { RA_CountCharTokens, humanizedDateTime, dragElement, favsToHotswap, getMessageTimeStamp } from './RossAscends-mods.js';
-import { loadMovingUIState, sortEntitiesList } from './power-user.js';
+import { power_user, loadMovingUIState, sortEntitiesList } from './power-user.js';
 
 import {
     chat,
@@ -68,9 +70,12 @@ import {
     depth_prompt_depth_default,
     loadItemizedPrompts,
     animation_duration,
+    depth_prompt_role_default,
+    shouldAutoContinue,
 } from '../script.js';
-import { appendTagToList, createTagMapFromList, getTagsList, applyTagsOnCharacterSelect, tag_map } from './tags.js';
+import { printTagList, createTagMapFromList, applyTagsOnCharacterSelect, tag_map } from './tags.js';
 import { FILTER_TYPES, FilterHelper } from './filters.js';
+import { isExternalMediaAllowed } from './chats.js';
 
 export {
     selected_group,
@@ -108,6 +113,7 @@ export const group_activation_strategy = {
 export const group_generation_mode = {
     SWAP: 0,
     APPEND: 1,
+    APPEND_DISABLED: 2,
 };
 
 const DEFAULT_AUTO_MODE_DELAY = 5;
@@ -173,7 +179,7 @@ async function loadGroupChat(chatId) {
     return [];
 }
 
-export async function getGroupChat(groupId) {
+export async function getGroupChat(groupId, reload = false) {
     const group = groups.find((x) => x.id === groupId);
     const chat_id = group.chat_id;
     const data = await loadGroupChat(chat_id);
@@ -182,12 +188,12 @@ export async function getGroupChat(groupId) {
 
     if (Array.isArray(data) && data.length) {
         data[0].is_group = true;
-        for (let key of data) {
-            chat.push(key);
-        }
+        chat.splice(0, chat.length, ...data);
         await printMessages();
     } else {
         sendSystemMessage(system_message_types.GROUP, '', { isSmallSys: true });
+        await eventSource.emit(event_types.MESSAGE_RECEIVED, (chat.length - 1));
+        await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, (chat.length - 1));
         if (group && Array.isArray(group.members)) {
             for (let member of group.members) {
                 const character = characters.find(x => x.avatar === member || x.name === member);
@@ -196,9 +202,11 @@ export async function getGroupChat(groupId) {
                     continue;
                 }
 
-                const mes = getFirstCharacterMessage(character);
+                const mes = await getFirstCharacterMessage(character);
                 chat.push(mes);
+                await eventSource.emit(event_types.MESSAGE_RECEIVED, (chat.length - 1));
                 addOneMessage(mes);
+                await eventSource.emit(event_types.CHARACTER_MESSAGE_RENDERED, (chat.length - 1));
             }
         }
         await saveGroupChat(groupId, false);
@@ -207,6 +215,10 @@ export async function getGroupChat(groupId) {
     if (group) {
         let metadata = group.chat_metadata ?? {};
         updateChatMetadata(metadata, true);
+    }
+
+    if (reload) {
+        select_group_chats(groupId, true);
     }
 
     await eventSource.emit(event_types.CHAT_CHANGED, getCurrentChatId());
@@ -279,7 +291,7 @@ export function findGroupMemberId(arg) {
  * Gets depth prompts for group members.
  * @param {string} groupId Group ID
  * @param {number} characterId Current Character ID
- * @returns {{depth: number, text: string}[]} Array of depth prompts
+ * @returns {{depth: number, text: string, role: string}[]} Array of depth prompts
  */
 export function getGroupDepthPrompts(groupId, characterId) {
     if (!groupId) {
@@ -315,9 +327,10 @@ export function getGroupDepthPrompts(groupId, characterId) {
 
         const depthPromptText = baseChatReplace(character.data?.extensions?.depth_prompt?.prompt?.trim(), name1, character.name) || '';
         const depthPromptDepth = character.data?.extensions?.depth_prompt?.depth ?? depth_prompt_depth_default;
+        const depthPromptRole = character.data?.extensions?.depth_prompt?.role ?? depth_prompt_role_default;
 
         if (depthPromptText) {
-            depthPrompts.push({ text: depthPromptText, depth: depthPromptDepth });
+            depthPrompts.push({ text: depthPromptText, depth: depthPromptDepth, role: depthPromptRole });
         }
     }
 
@@ -325,7 +338,7 @@ export function getGroupDepthPrompts(groupId, characterId) {
 }
 
 /**
- * Combines group members info a single string. Only for groups with generation mode set to APPEND.
+ * Combines group members cards into a single string. Only for groups with generation mode set to APPEND or APPEND_DISABLED.
  * @param {string} groupId Group ID
  * @param {number} characterId Current Character ID
  * @returns {{description: string, personality: string, scenario: string, mesExamples: string}} Group character cards combined
@@ -334,8 +347,48 @@ export function getGroupCharacterCards(groupId, characterId) {
     console.debug('getGroupCharacterCards entered for group: ', groupId);
     const group = groups.find(x => x.id === groupId);
 
-    if (!group || group?.generation_mode !== group_generation_mode.APPEND || !Array.isArray(group.members) || !group.members.length) {
+    if (!group || !group?.generation_mode || !Array.isArray(group.members) || !group.members.length) {
         return null;
+    }
+
+    /**
+     * Runs the macro engine on a text, with custom <FIELDNAME> replace
+     * @param {string} value Value to replace
+     * @param {string} fieldName Name of the field
+     * @param {string} characterName Name of the character
+     * @returns {string} Replaced text
+     * */
+    function customBaseChatReplace(value, fieldName, characterName) {
+        if (!value) {
+            return '';
+        }
+
+        // We should do the custom field name replacement first, and then run it through the normal macro engine with provided names
+        value = value.replace(/<FIELDNAME>/gi, fieldName);
+        return baseChatReplace(value.trim(), name1, characterName);
+    }
+
+    /**
+     * Prepares text with prefix/suffix for a character field
+     * @param {string} value Value to replace
+     * @param {string} characterName Name of the character
+     * @param {string} fieldName Name of the field
+     * @returns {string} Prepared text
+     * */
+    function replaceAndPrepareForJoin(value, characterName, fieldName) {
+        value = value.trim();
+        if (!value) {
+            return '';
+        }
+
+        // Prepare and replace prefixes
+        const prefix = customBaseChatReplace(group.generation_mode_join_prefix, fieldName, characterName);
+        const suffix = customBaseChatReplace(group.generation_mode_join_suffix, fieldName, characterName);
+        const separator = power_user.instruct.wrap ? '\n' : '';
+        // Also run the macro replacement on the actual content
+        value = customBaseChatReplace(value, fieldName, characterName);
+
+        return `${prefix ? prefix + separator : ''}${value}${suffix ? separator + suffix : ''}`;
     }
 
     const scenarioOverride = chat_metadata['scenario'];
@@ -354,32 +407,39 @@ export function getGroupCharacterCards(groupId, characterId) {
             continue;
         }
 
-        if (group.disabled_members.includes(member) && characterId !== index) {
+        if (group.disabled_members.includes(member) && characterId !== index && group.generation_mode !== group_generation_mode.APPEND_DISABLED) {
             console.debug(`Skipping disabled group member: ${member}`);
             continue;
         }
 
-        descriptions.push(baseChatReplace(character.description.trim(), name1, character.name));
-        personalities.push(baseChatReplace(character.personality.trim(), name1, character.name));
-        scenarios.push(baseChatReplace(character.scenario.trim(), name1, character.name));
-        mesExamplesArray.push(baseChatReplace(character.mes_example.trim(), name1, character.name));
+        descriptions.push(replaceAndPrepareForJoin(character.description, character.name, 'Description'));
+        personalities.push(replaceAndPrepareForJoin(character.personality, character.name, 'Personality'));
+        scenarios.push(replaceAndPrepareForJoin(character.scenario, character.name, 'Scenario'));
+        mesExamplesArray.push(replaceAndPrepareForJoin(character.mes_example, character.name, 'Example Messages'));
     }
 
-    const description = descriptions.join('\n');
-    const personality = personalities.join('\n');
-    const scenario = scenarioOverride?.trim() || scenarios.join('\n');
-    const mesExamples = mesExamplesArray.join('\n');
+    const description = descriptions.filter(x => x.length).join('\n');
+    const personality = personalities.filter(x => x.length).join('\n');
+    const scenario = scenarioOverride?.trim() || scenarios.filter(x => x.length).join('\n');
+    const mesExamples = mesExamplesArray.filter(x => x.length).join('\n');
 
     return { description, personality, scenario, mesExamples };
 }
 
-function getFirstCharacterMessage(character) {
+async function getFirstCharacterMessage(character) {
     let messageText = character.first_mes;
 
     // if there are alternate greetings, pick one at random
     if (Array.isArray(character.data?.alternate_greetings)) {
         const messageTexts = [character.first_mes, ...character.data.alternate_greetings].filter(x => x);
         messageText = messageTexts[Math.floor(Math.random() * messageTexts.length)];
+    }
+
+    // Allow extensions to change the first message
+    const eventArgs = { input: messageText, output: '', character: character };
+    await eventSource.emit(event_types.CHARACTER_FIRST_MESSAGE_SELECTED, eventArgs);
+    if (eventArgs.output) {
+        messageText = eventArgs.output;
     }
 
     const mes = {};
@@ -522,18 +582,33 @@ async function getGroups() {
 }
 
 export function getGroupBlock(group) {
+    let count = 0;
+    let namesList = [];
+
+    // Build inline name list
+    if (Array.isArray(group.members) && group.members.length) {
+        for (const member of group.members) {
+            const character = characters.find(x => x.avatar === member || x.name === member);
+            if (character) {
+                namesList.push(character.name);
+                count++;
+            }
+        }
+    }
+
     const template = $('#group_list_template .group_select').clone();
     template.data('id', group.id);
     template.attr('grid', group.id);
-    template.find('.ch_name').text(group.name);
+    template.find('.ch_name').text(group.name).attr('title', `[Group] ${group.name}`);
     template.find('.group_fav_icon').css('display', 'none');
     template.addClass(group.fav ? 'is_fav' : '');
     template.find('.ch_fav').val(group.fav);
+    template.find('.group_select_counter').text(`${count} ${count != 1 ? 'characters' : 'character'}`);
+    template.find('.group_select_block_list').text(namesList.join(', '));
 
     // Display inline tags
-    const tags = getTagsList(group.id);
     const tagsElement = template.find('.tags');
-    tags.forEach(tag => appendTagToList(tagsElement, tag, {}));
+    printTagList(tagsElement, { forEntityOrKey: group.id });
 
     const avatar = getGroupAvatar(group);
     if (avatar) {
@@ -551,6 +626,8 @@ function updateGroupAvatar(group) {
             $(this).find('.avatar').replaceWith(getGroupAvatar(group));
         }
     });
+
+    favsToHotswap();
 }
 
 // check if isDataURLor if it's a valid local file url
@@ -568,7 +645,7 @@ function getGroupAvatar(group) {
     }
     // if isDataURL or if it's a valid local file url
     if (isValidImageUrl(group.avatar_url)) {
-        return $(`<div class="avatar"><img src="${group.avatar_url}"></div>`);
+        return $(`<div class="avatar" title="[Group] ${group.name}"><img src="${group.avatar_url}"></div>`);
     }
 
     const memberAvatars = [];
@@ -594,12 +671,19 @@ function getGroupAvatar(group) {
             groupAvatar.find(`.img_${i + 1}`).attr('src', memberAvatars[i]);
         }
 
+        groupAvatar.attr('title', `[Group] ${group.name}`);
         return groupAvatar;
+    }
+
+    // catch edge case where group had one member and that member is deleted
+    if (avatarCount === 0) {
+        return $('<div class="missing-avatar fa-solid fa-user-slash"></div>');
     }
 
     // default avatar
     const groupAvatar = $('#group_avatars_template .collage_1').clone();
     groupAvatar.find('.img_1').attr('src', group.avatar_url || system_avatar);
+    groupAvatar.attr('title', `[Group] ${group.name}`);
     return groupAvatar;
 }
 
@@ -640,9 +724,10 @@ async function generateGroupWrapper(by_auto_mode, type = null, params = {}) {
         await delay(1);
     }
 
-    const group = groups.find((x) => x.id === selected_group);
-    let typingIndicator = $('#chat .typing_indicator');
+    /** @type {any} Caution: JS war crimes ahead */
     let textResult = '';
+    let typingIndicator = $('#chat .typing_indicator');
+    const group = groups.find((x) => x.id === selected_group);
 
     if (!group || !Array.isArray(group.members) || !group.members.length) {
         sendSystemMessage(system_message_types.EMPTY, '', { isSmallSys: true });
@@ -729,6 +814,7 @@ async function generateGroupWrapper(by_auto_mode, type = null, params = {}) {
             const generateType = type == 'swipe' || type == 'impersonate' || type == 'quiet' || type == 'continue' ? type : 'group_chat';
             setCharacterId(chId);
             setCharacterName(characters[chId].name);
+            await eventSource.emit(event_types.GROUP_MEMBER_DRAFTED, chId);
 
             if (type !== 'swipe' && type !== 'impersonate' && !isStreamingEnabled()) {
                 // update indicator and scroll down
@@ -739,8 +825,15 @@ async function generateGroupWrapper(by_auto_mode, type = null, params = {}) {
             }
 
             // Wait for generation to finish
-            const generateFinished = await Generate(generateType, { automatic_trigger: by_auto_mode, ...(params || {}) });
-            textResult = await generateFinished;
+            textResult = await Generate(generateType, { automatic_trigger: by_auto_mode, ...(params || {}) });
+            let messageChunk = textResult?.messageChunk;
+
+            if (messageChunk) {
+                while (shouldAutoContinue(messageChunk, type === 'impersonate')) {
+                    textResult = await Generate('continue', { automatic_trigger: by_auto_mode, ...(params || {}) });
+                    messageChunk = textResult?.messageChunk;
+                }
+            }
         }
     } finally {
         typingIndicator.hide();
@@ -1040,6 +1133,8 @@ async function onGroupGenerationModeInput(e) {
         let _thisGroup = groups.find((x) => x.id == openGroupId);
         _thisGroup.generation_mode = Number(e.target.value);
         await editGroup(openGroupId, false, false);
+
+        toggleHiddenControls(_thisGroup);
     }
 }
 
@@ -1049,6 +1144,15 @@ async function onGroupAutoModeDelayInput(e) {
         _thisGroup.auto_mode_delay = Number(e.target.value);
         await editGroup(openGroupId, false, false);
         setAutoModeWorker();
+    }
+}
+
+async function onGroupGenerationModeTemplateInput(e) {
+    if (openGroupId) {
+        let _thisGroup = groups.find((x) => x.id == openGroupId);
+        const prop = $(e.target).attr('setting');
+        _thisGroup[prop] = String(e.target.value);
+        await editGroup(openGroupId, false, false);
     }
 }
 
@@ -1162,9 +1266,8 @@ function getGroupCharacterBlock(character) {
     template.toggleClass('disabled', isGroupMemberDisabled(character.avatar));
 
     // Display inline tags
-    const tags = getTagsList(character.avatar);
     const tagsElement = template.find('.tags');
-    tags.forEach(tag => appendTagToList(tagsElement, tag, {}));
+    printTagList(tagsElement, { forEntityOrKey: characters.indexOf(character) });
 
     if (!openGroupId) {
         template.find('[data-action="speak"]').hide();
@@ -1218,6 +1321,14 @@ async function onHideMutedSpritesClick(value) {
     }
 }
 
+function toggleHiddenControls(group, generationMode = null) {
+    const isJoin = [group_generation_mode.APPEND, group_generation_mode.APPEND_DISABLED].includes(generationMode ?? group?.generation_mode);
+    $('#rm_group_generation_mode_join_prefix').parent().toggle(isJoin);
+    $('#rm_group_generation_mode_join_suffix').parent().toggle(isJoin);
+    initScrollHeight($('#rm_group_generation_mode_join_prefix'));
+    initScrollHeight($('#rm_group_generation_mode_join_suffix'));
+}
+
 function select_group_chats(groupId, skipAnimation) {
     openGroupId = groupId;
     newGroupMembers = [];
@@ -1240,6 +1351,9 @@ function select_group_chats(groupId, skipAnimation) {
         selectRightMenuWithAnimation('rm_group_chats_block');
     }
 
+    // render tags
+    printTagList($('#groupTagList'), { forEntityOrKey: groupId, tagOptions: { removable: true } });
+
     // render characters list
     printGroupCandidates();
     printGroupMembers();
@@ -1250,12 +1364,20 @@ function select_group_chats(groupId, skipAnimation) {
     $('#rm_group_hidemutedsprites').prop('checked', group && group.hideMutedSprites);
     $('#rm_group_automode_delay').val(group?.auto_mode_delay ?? DEFAULT_AUTO_MODE_DELAY);
 
+    $('#rm_group_generation_mode_join_prefix').val(group?.generation_mode_join_prefix ?? '').attr('setting', 'generation_mode_join_prefix');
+    $('#rm_group_generation_mode_join_suffix').val(group?.generation_mode_join_suffix ?? '').attr('setting', 'generation_mode_join_suffix');
+    toggleHiddenControls(group, generationMode);
+
     // bottom buttons
     if (openGroupId) {
         $('#rm_group_submit').hide();
         $('#rm_group_delete').show();
         $('#rm_group_scenario').show();
         $('#group-metadata-controls .chat_lorebook_button').removeClass('disabled').prop('disabled', false);
+        $('#group_open_media_overrides').show();
+        const isMediaAllowed = isExternalMediaAllowed();
+        $('#group_media_allowed_icon').toggle(isMediaAllowed);
+        $('#group_media_forbidden_icon').toggle(!isMediaAllowed);
     } else {
         $('#rm_group_submit').show();
         if ($('#groupAddMemberListToggle .inline-drawer-content').css('display') !== 'block') {
@@ -1264,6 +1386,7 @@ function select_group_chats(groupId, skipAnimation) {
         $('#rm_group_delete').hide();
         $('#rm_group_scenario').hide();
         $('#group-metadata-controls .chat_lorebook_button').addClass('disabled').prop('disabled', true);
+        $('#group_open_media_overrides').hide();
     }
 
     updateFavButtonState(group?.fav ?? false);
@@ -1277,6 +1400,11 @@ function select_group_chats(groupId, skipAnimation) {
     else {
         $('#rm_group_automode_label').hide();
     }
+
+    // Toggle textbox sizes, as input events have not fired here
+    $('#rm_group_chats_block .autoSetHeight').each(element => {
+        resetScrollHeight(element);
+    });
 
     eventSource.emit('groupSelected', { detail: { id: openGroupId, group: group } });
 }
@@ -1620,7 +1748,7 @@ export async function deleteGroupChat(groupId, chatId) {
 
     if (response.ok) {
         if (group.chats.length) {
-            await openGroupChat(groupId, group.chats[0]);
+            await openGroupChat(groupId, group.chats[group.chats.length - 1]);
         } else {
             await createNewGroupChat(groupId);
         }
@@ -1736,8 +1864,12 @@ function doCurMemberListPopout() {
 }
 
 jQuery(() => {
+    $(document).on('input', '#rm_group_chats_block .autoSetHeight', function () {
+        resetScrollHeight($(this));
+    });
+
     $(document).on('click', '.group_select', function () {
-        const groupId = $(this).data('id');
+        const groupId = $(this).attr('chid') || $(this).attr('grid') || $(this).data('id');
         openGroupById(groupId);
     });
     $('#rm_group_filter').on('input', filterGroupMembers);
@@ -1763,6 +1895,8 @@ jQuery(() => {
     $('#rm_group_activation_strategy').on('change', onGroupActivationStrategyInput);
     $('#rm_group_generation_mode').on('change', onGroupGenerationModeInput);
     $('#rm_group_automode_delay').on('input', onGroupAutoModeDelayInput);
+    $('#rm_group_generation_mode_join_prefix').on('input', onGroupGenerationModeTemplateInput);
+    $('#rm_group_generation_mode_join_suffix').on('input', onGroupGenerationModeTemplateInput);
     $('#group_avatar_button').on('input', uploadGroupAvatar);
     $('#rm_group_restore_avatar').on('click', restoreGroupAvatar);
     $(document).on('click', '.group_member .right_menu_button', onGroupActionClick);

@@ -638,7 +638,121 @@ together.post('/generate', jsonParser, async (request, response) => {
     }
 });
 
+const drawthings = express.Router();
+
+drawthings.post('/ping', jsonParser, async (request, response) => {
+    try {
+        const url = new URL(request.body.url);
+        url.pathname = '/';
+
+        const result = await fetch(url, {
+            method: 'HEAD',
+        });
+
+        if (!result.ok) {
+            throw new Error('SD DrawThings API returned an error.');
+        }
+
+        return response.sendStatus(200);
+    } catch (error) {
+        console.log(error);
+        return response.sendStatus(500);
+    }
+});
+
+drawthings.post('/get-model', jsonParser, async (request, response) => {
+    try {
+        const url = new URL(request.body.url);
+        url.pathname = '/';
+
+        const result = await fetch(url, {
+            method: 'GET',
+        });
+        const data = await result.json();
+
+        return response.send(data['model']);
+    } catch (error) {
+        console.log(error);
+        return response.sendStatus(500);
+    }
+});
+
+drawthings.post('/generate', jsonParser, async (request, response) => {
+    try {
+        console.log('SD DrawThings API request:', request.body);
+
+        const url = new URL(request.body.url);
+        url.pathname = '/sdapi/v1/txt2img';
+
+        const body = { ...request.body };
+        const auth = getBasicAuthHeader(request.body.auth);
+        delete body.url;
+        delete body.auth;
+
+        const result = await fetch(url, {
+            method: 'POST',
+            body: JSON.stringify(body),
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': auth,
+            },
+            timeout: 0,
+        });
+
+        if (!result.ok) {
+            const text = await result.text();
+            throw new Error('SD DrawThings API returned an error.', { cause: text });
+        }
+
+        const data = await result.json();
+        return response.send(data);
+    } catch (error) {
+        console.log(error);
+        return response.sendStatus(500);
+    }
+});
+
+const pollinations = express.Router();
+
+pollinations.post('/generate', jsonParser, async (request, response) => {
+    try {
+        const promptUrl = new URL(`https://image.pollinations.ai/prompt/${encodeURIComponent(request.body.prompt)}`);
+        const params = new URLSearchParams({
+            model: String(request.body.model),
+            negative_prompt: String(request.body.negative_prompt),
+            seed: String(Math.floor(Math.random() * 10_000_000)),
+            enhance: String(request.body.enhance ?? false),
+            refine: String(request.body.refine ?? false),
+            width: String(request.body.width ?? 1024),
+            height: String(request.body.height ?? 1024),
+            nologo: String(true),
+            nofeed: String(true),
+            referer: 'sillytavern',
+        });
+        promptUrl.search = params.toString();
+
+        console.log('Pollinations request URL:', promptUrl.toString());
+
+        const result = await fetch(promptUrl);
+
+        if (!result.ok) {
+            console.log('Pollinations returned an error.', result.status, result.statusText);
+            throw new Error('Pollinations request failed.');
+        }
+
+        const buffer = await result.buffer();
+        const base64 = buffer.toString('base64');
+
+        return response.send({ image: base64 });
+    } catch (error) {
+        console.log(error);
+        return response.sendStatus(500);
+    }
+});
+
 router.use('/comfy', comfy);
 router.use('/together', together);
+router.use('/drawthings', drawthings);
+router.use('/pollinations', pollinations);
 
 module.exports = { router };
