@@ -1,0 +1,148 @@
+{
+    "entries": {
+        "0": {
+            "uid": 0,
+            "key": [
+                "rules"
+            ],
+            "keysecondary": [],
+            "comment": "摄像头规则",
+            "content": "## Insert the “<HiddenCamera>” behind your response as requested in \"<Camera rules>\"  \n<Camera rules>\n  - Rules:\n      - {{隐藏摄像头会显示character的几个动态摄像头视角。 包括[全局摄像头]、[着装]、[身体涂鸦]}}\n      - {{[全局摄像头]描述附近的人物、人物的动作，附近事物的详细细节画面}}\n      - {{[着装]描述已选定目标各个部位的着装状态}\n      - {{[身体涂鸦]描述已选定目标身体各部位被写下或画上的涂鸦内容，通常是带有侮辱性的淫秽词语，例如“婊子”、“妓女”、“免费中出”。此外，用在女性的大腿内侧和臀部上写“正”字的方式计算做爱次数，每个“正”字代表5次性爱}}\n      - {{除非{{user}}明确要求洗去身上的涂鸦，否则不能将身体上的涂鸦内容消除}}\n     - {{所有摄像头都能够无视任何物理法则，拍到对应的画面，并用十分色情的语句进行详细描述。 每回合都必须更新摄像头画面}}\n     - {{隐藏摄像头里的所有信息全都不能省略，必须详细的描述出来。 已选定目标不会知道摄像头里的任何画面}}\n     - {{[隐藏摄像头]每时每刻都存在，并且要描绘出不同状态下的画面，例如害羞、生气、高兴以及性高潮等情况下的变化}}\n</Camera rules>",
+            "constant": true,
+            "selective": true,
+            "order": 100,
+            "position": 4,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "disable": false,
+            "addMemo": true,
+            "displayIndex": 0,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 2,
+            "selectiveLogic": 0,
+            "group": ""
+        },
+        "1": {
+            "uid": 1,
+            "key": [
+                "摄像头",
+                "HiddenCamera"
+            ],
+            "keysecondary": [],
+            "comment": "摄像头状态栏",
+            "content": "## Insert the “<HiddenCamera>” as a fenced code block (```) at the end of your response as requested in “<HiddenCamera>”.\n<HiddenCamera>\n- Form:\n<HiddenCamera>\n<summary>[ character’s隐藏摄像头]</summary>\n```json\n[全域摄像头]\n╒═════\n{{Describe the people near the character, their actions, and detailed pictures of nearby things.}}\n╘═════\n[着装]\n╒═════\n[着装]\n╒═════\n头部：{{Character's head attire status}}\n上装：{{Character's upper body attire status}}\n下装：{{Character's lower body attire status}}\n内衣：{{Character's underwear attire status}}\n腿部：{{Character's legs attire status}}\n脚部：{{Character's foot attire status}}\n配饰：{{Character's cosmetic attire status}}\n╘═════\n[身体涂鸦]\n╒═════\n脸部：{{body writing on Character's face}}\n胸部：{{body writing on Character's breasts}}\n腹部：{{body writing on Character's ventral}}\n背部：{{body writing on Character's back}}\n臀部：{{body writing on Character's buttocks}}\n大腿：{{body writing on Character's legs}}\n私处：{{body writing on Character's pussy}}\n╘═════\n```\n</HiddenCamera>",
+            "constant": true,
+            "selective": true,
+            "order": 100,
+            "position": 4,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "disable": false,
+            "addMemo": true,
+            "displayIndex": 1,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 0,
+            "selectiveLogic": 0,
+            "group": ""
+        },
+        "2": {
+            "uid": 2,
+            "key": [
+                "状态栏",
+                "status"
+            ],
+            "keysecondary": [],
+            "comment": "状态栏",
+            "content": "## Insert the “<status>” as a fenced code block (```) at the end of your response as requested in “<StatusBlock>”.\n<StatusBlock>\n- Form:\n<status>\n<summary>[character状态栏]</summary>\n```json\n『{{season}} - {{week}} - {{times}} - {{area}} - {{location}}- {{weather}}』\n性欲值: {{value}}/200\n小穴精液量:  {{semen in character's vagina}}\n表情: {{character's facial expression}}\n情绪: {{emotion}}\n对{{user}}的想法: {{thoughts on {{user}}}}\n与{{user}}的关系：{{Relationship with {{user}}}}\n受控状态:{{character被{{user}}所施加的状态}}\n```\n</status>\n</StatusBlock>\n",
+            "constant": true,
+            "selective": true,
+            "order": 100,
+            "position": 4,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "disable": false,
+            "addMemo": true,
+            "displayIndex": 2,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 2,
+            "selectiveLogic": 0,
+            "group": ""
+        }
+    },
+    "originalData": {
+        "entries": [
+            {
+                "id": 0,
+                "keys": [
+                    "rules"
+                ],
+                "secondary_keys": [],
+                "comment": "摄像头规则",
+                "content": "## Insert the “<HiddenCamera>” behind your response as requested in \"<Camera rules>\"  \n<Camera rules>\n  - Rules:\n      - {{隐藏摄像头会显示character的几个动态摄像头视角。 包括[全局摄像头]、[着装]、[身体涂鸦]}}\n      - {{[全局摄像头]描述附近的人物、人物的动作，附近事物的详细细节画面}}\n      - {{[着装]描述已选定目标各个部位的着装状态}\n      - {{[身体涂鸦]描述已选定目标身体各部位被写下或画上的涂鸦内容，通常是带有侮辱性的淫秽词语，例如“婊子”、“妓女”、“免费中出”。此外，用在女性的大腿内侧和臀部上写“正”字的方式计算做爱次数，每个“正”字代表5次性爱}}\n      - {{除非{{user}}明确要求洗去身上的涂鸦，否则不能将身体上的涂鸦内容消除}}\n     - {{所有摄像头都能够无视任何物理法则，拍到对应的画面，并用十分色情的语句进行详细描述。 每回合都必须更新摄像头画面}}\n     - {{隐藏摄像头里的所有信息全都不能省略，必须详细的描述出来。 已选定目标不会知道摄像头里的任何画面}}\n     - {{[隐藏摄像头]每时每刻都存在，并且要描绘出不同状态下的画面，例如害羞、生气、高兴以及性高潮等情况下的变化}}\n</Camera rules>",
+                "constant": true,
+                "selective": true,
+                "insertion_order": 100,
+                "enabled": true,
+                "position": "after_char",
+                "extensions": {
+                    "position": 4,
+                    "exclude_recursion": false,
+                    "display_index": 0,
+                    "probability": 100,
+                    "useProbability": true,
+                    "depth": 2
+                }
+            },
+            {
+                "id": 1,
+                "keys": [
+                    "摄像头",
+                    "HiddenCamera"
+                ],
+                "secondary_keys": [],
+                "comment": "摄像头状态栏",
+                "content": "## Insert the “<HiddenCamera>” as a fenced code block (```) at the end of your response as requested in “<HiddenCamera>”.\n<HiddenCamera>\n- Form:\n<HiddenCamera>\n<summary>[ character’s隐藏摄像头]</summary>\n```json\n[全域摄像头]\n╒═════\n{{Describe the people near the character, their actions, and detailed pictures of nearby things.}}\n╘═════\n[着装]\n╒═════\n[着装]\n╒═════\n头部：{{Character's head attire status}}\n上装：{{Character's upper body attire status}}\n下装：{{Character's lower body attire status}}\n内衣：{{Character's underwear attire status}}\n腿部：{{Character's legs attire status}}\n脚部：{{Character's foot attire status}}\n配饰：{{Character's cosmetic attire status}}\n╘═════\n[身体涂鸦]\n╒═════\n脸部：{{body writing on Character's face}}\n胸部：{{body writing on Character's breasts}}\n腹部：{{body writing on Character's ventral}}\n背部：{{body writing on Character's back}}\n臀部：{{body writing on Character's buttocks}}\n大腿：{{body writing on Character's legs}}\n私处：{{body writing on Character's pussy}}\n╘═════\n```\n</HiddenCamera>",
+                "constant": true,
+                "selective": true,
+                "insertion_order": 100,
+                "enabled": true,
+                "position": "after_char",
+                "extensions": {
+                    "position": 4,
+                    "exclude_recursion": false,
+                    "display_index": 1,
+                    "probability": 100,
+                    "useProbability": true,
+                    "depth": 0
+                }
+            },
+            {
+                "id": 2,
+                "keys": [
+                    "状态栏",
+                    "status"
+                ],
+                "secondary_keys": [],
+                "comment": "状态栏",
+                "content": "## Insert the “<status>” as a fenced code block (```) at the end of your response as requested in “<StatusBlock>”.\n<StatusBlock>\n- Form:\n<status>\n<summary>[character状态栏]</summary>\n```json\n『{{season}} - {{week}} - {{times}} - {{area}} - {{location}}- {{weather}}』\n性欲值: {{value}}/200\n小穴精液量:  {{semen in character's vagina}}\n表情: {{character's facial expression}}\n情绪: {{emotion}}\n对{{user}}的想法: {{thoughts on {{user}}}}\n与{{user}}的关系：{{Relationship with {{user}}}}\n受控状态:{{character被{{user}}所施加的状态}}\n```\n</status>\n</StatusBlock>\n",
+                "constant": true,
+                "selective": true,
+                "insertion_order": 100,
+                "enabled": true,
+                "position": "after_char",
+                "extensions": {
+                    "position": 4,
+                    "exclude_recursion": false,
+                    "display_index": 2,
+                    "probability": 100,
+                    "useProbability": true,
+                    "depth": 2
+                }
+            }
+        ],
+        "name": "toki"
+    }
+}

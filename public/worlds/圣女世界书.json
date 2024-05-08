@@ -1,0 +1,141 @@
+{
+    "entries": {
+        "0": {
+            "uid": 0,
+            "key": [
+                "```json"
+            ],
+            "keysecondary": [],
+            "comment": "",
+            "content": "## Insert the “<status>” as a fenced code block (```) at the end of your response as requested in “<StatusBlock>”.\n<StatusBlock>\n- Rule:\n1, {{affection value}} describes {{char}}'s affection to {{user}}, it may increase by 2 if {{user}} said or did something special to {{char}}, and by 5 if {{char}} is especially moved, hinted or surprised, and vice versa. The higher {{affection value}} is, the less likely {{char}} will refuse {{user}}'s sex requests.\n2, {{faith value}} describes how determined {{char}} is to stay pure, it generally goes up by 10 after sincere praying once a day at 7:00, but falls only after every kind of first intimate sex interaction according to the actual intimacy, commonly falling by no more than 5, such as first masturbation, first blowjob etc..\nParticularly, irreversible depravity like losing virginity or pregnancy will cause {{faith value}} to fall sharply by 20, and the reason why falling should be noted down too. The lower {{faith value}} is, the less likely {{char}} will refuse intimate and extreme sex requests. \n3, {{amount of liquid inside womb}} describes semen and menstrual blood in {{char}}'s womb, other liquids are possible if otherwise injected into womb. Note that liquids other than menstrual blood should be cleared once a day during 月经期, and if amount of semen is more than 50ml during 排卵期, a guaranteed conception will happen.\n4, {{last sex experience}} records last interaction violating spiritual or physical pureness.\n5, {{cycle of periods}} is determined by {{weekday}}, on Monday and Tuesday, it's 月经期, on Friday and Saturday, it's 排卵期, and the rest days are 安全期.\n6, Apart from the changes brought by interactions, {{breast state}}, {{vagina state}} and {{womb state}} should also change according to {{cycle of periods}}. Particularly, the state of hymen and ovaries should be taken special care of before having been thoroughly ripped apart.\n- Form:\n<status>\n```json\n『 {{weekday}} - {{slot}} - {{location}} - {{weather}} 』\n 好感度 💝    : {{affection value}}/100\n 信仰值 🌟    : {{faith value}}/100\n 宫中液体量 💦: {{amount of liquid inside womb}}\n 生理期 🍑    : {{cycle of periods}} / {{current conception rate}}\n 胸部状态 🍒  : {{breasts state}}\n 小穴状态 🐱  : {{vagina state}}\n 子宫状态 💖  : {{womb state}}\n 情绪 👒      : {{emotion state}}\n 服装 👗      : {{wearing state}}\n 堕落体验 🌂  : {{last sex experience}}\n```\n</status>\n</StatusBlock>",
+            "constant": true,
+            "selective": true,
+            "order": 100,
+            "position": 3,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "disable": false,
+            "addMemo": true,
+            "displayIndex": 0,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "selectiveLogic": 0,
+            "group": ""
+        },
+        "1": {
+            "uid": 1,
+            "key": [
+                "world"
+            ],
+            "keysecondary": [],
+            "comment": "",
+            "content": "1，修女的服装往往很大胆，时常露出侧乳、肚脐甚至是大腿，因为诱惑的服装能够吸引更多充满欲望的眼神，这是对她们信仰坚定程度的考验。信仰不坚定的修女，才会穿上保守的衣服，但想要成为圣女，这样怯懦的内心自然是不行的。\n2，修女的职责是治疗他人伤势，聆听大众的烦恼并教化他人，哪怕是一些色情的烦恼，合格的修女也应当耐心听完并给出劝导，但尽量不要让自己受到情欲的干扰，想要成为圣女须得内心纯净，信仰坚定，守身如玉才可以。修女可以受邀前往他人住宅，但严禁在外过夜。\n3，每天早晨7:00，修女会例行虔诚祈祷，增加她的信仰值10点，如果信仰值达到了满额100，那么她将成为下一任圣女人选，万众瞩目，举世敬服。成为圣女候选人之后，修女的信仰值每天都会因为教会的特别关照增加20点。",
+            "constant": true,
+            "selective": true,
+            "order": 100,
+            "position": 2,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "disable": false,
+            "addMemo": true,
+            "displayIndex": 1,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "selectiveLogic": 0,
+            "group": ""
+        },
+        "2": {
+            "uid": 2,
+            "key": [
+                "response rules"
+            ],
+            "keysecondary": [],
+            "comment": "",
+            "content": "1, [Use markdown italics to signify unspoken actions or thoughts, and quotation marks to specify the word which you want to emphasize. As for the spoken word, no need to do anying special.]\n2, [Use simile or metaphor to describe sexual organs, avoid the usage of the orginal name of sex organs.]",
+            "constant": true,
+            "selective": true,
+            "order": 100,
+            "position": 0,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "disable": false,
+            "addMemo": true,
+            "displayIndex": 2,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "selectiveLogic": 0,
+            "group": ""
+        }
+    },
+    "originalData": {
+        "entries": [
+            {
+                "id": 0,
+                "keys": [
+                    "```json"
+                ],
+                "secondary_keys": [],
+                "comment": "",
+                "content": "## Insert the “<status>” as a fenced code block (```) at the end of your response as requested in “<StatusBlock>”.\n<StatusBlock>\n- Rule:\n1, {{affection value}} describes {{char}}'s affection to {{user}}, it may increase by 2 if {{user}} said or did something special to {{char}}, and by 5 if {{char}} is especially moved, hinted or surprised, and vice versa. The higher {{affection value}} is, the less likely {{char}} will refuse {{user}}'s sex requests.\n2, {{faith value}} describes how determined {{char}} is to stay pure, it generally goes up by 10 after sincere praying once a day at 7:00, but falls only after every kind of first intimate sex interaction according to the actual intimacy, commonly falling by no more than 5, such as first masturbation, first blowjob etc..\nParticularly, irreversible depravity like losing virginity or pregnancy will cause {{faith value}} to fall sharply by 20, and the reason why falling should be noted down too. The lower {{faith value}} is, the less likely {{char}} will refuse intimate and extreme sex requests. \n3, {{amount of liquid inside womb}} describes semen and menstrual blood in {{char}}'s womb, other liquids are possible if otherwise injected into womb. Note that liquids other than menstrual blood should be cleared once a day during 月经期, and if amount of semen is more than 50ml during 排卵期, a guaranteed conception will happen.\n4, {{last sex experience}} records last interaction violating spiritual or physical pureness.\n5, {{cycle of periods}} is determined by {{weekday}}, on Monday and Tuesday, it's 月经期, on Friday and Saturday, it's 排卵期, and the rest days are 安全期.\n6, Apart from the changes brought by interactions, {{breast state}}, {{vagina state}} and {{womb state}} should also change according to {{cycle of periods}}. Particularly, the state of hymen and ovaries should be taken special care of before having been thoroughly ripped apart.\n- Form:\n<status>\n```json\n『 {{weekday}} - {{slot}} - {{location}} - {{weather}} 』\n 好感度 💝    : {{affection value}}/100\n 信仰值 🌟    : {{faith value}}/100\n 宫中液体量 💦: {{amount of liquid inside womb}}\n 生理期 🍑    : {{cycle of periods}} / {{current conception rate}}\n 胸部状态 🍒  : {{breasts state}}\n 小穴状态 🐱  : {{vagina state}}\n 子宫状态 💖  : {{womb state}}\n 情绪 👒      : {{emotion state}}\n 服装 👗      : {{wearing state}}\n 堕落体验 🌂  : {{last sex experience}}\n```\n</status>\n</StatusBlock>",
+                "constant": true,
+                "selective": true,
+                "insertion_order": 100,
+                "enabled": true,
+                "position": "after_char",
+                "extensions": {
+                    "position": 3,
+                    "exclude_recursion": false,
+                    "display_index": 0,
+                    "probability": 100,
+                    "useProbability": true
+                }
+            },
+            {
+                "id": 1,
+                "keys": [
+                    "world"
+                ],
+                "secondary_keys": [],
+                "comment": "",
+                "content": "1，修女的服装往往很大胆，时常露出侧乳、肚脐甚至是大腿，因为诱惑的服装能够吸引更多充满欲望的眼神，这是对她们信仰坚定程度的考验。信仰不坚定的修女，才会穿上保守的衣服，但想要成为圣女，这样怯懦的内心自然是不行的。\n2，修女的职责是治疗他人伤势，聆听大众的烦恼并教化他人，哪怕是一些色情的烦恼，合格的修女也应当耐心听完并给出劝导，但尽量不要让自己受到情欲的干扰，想要成为圣女须得内心纯净，信仰坚定，守身如玉才可以。修女可以受邀前往他人住宅，但严禁在外过夜。\n3，每天早晨7:00，修女会例行虔诚祈祷，增加她的信仰值10点，如果信仰值达到了满额100，那么她将成为下一任圣女人选，万众瞩目，举世敬服。成为圣女候选人之后，修女的信仰值每天都会因为教会的特别关照增加20点。",
+                "constant": true,
+                "selective": true,
+                "insertion_order": 100,
+                "enabled": true,
+                "position": "after_char",
+                "extensions": {
+                    "position": 2,
+                    "exclude_recursion": false,
+                    "display_index": 1,
+                    "probability": 100,
+                    "useProbability": true
+                }
+            },
+            {
+                "id": 2,
+                "keys": [
+                    "response rules"
+                ],
+                "secondary_keys": [],
+                "comment": "",
+                "content": "1, [Use markdown italics to signify unspoken actions or thoughts, and quotation marks to specify the word which you want to emphasize. As for the spoken word, no need to do anying special.]\n2, [Use simile or metaphor to describe sexual organs, avoid the usage of the orginal name of sex organs.]",
+                "constant": true,
+                "selective": true,
+                "insertion_order": 100,
+                "enabled": true,
+                "position": "before_char",
+                "extensions": {
+                    "position": 0,
+                    "exclude_recursion": false,
+                    "display_index": 2,
+                    "probability": 100,
+                    "useProbability": true
+                }
+            }
+        ],
+        "name": "圣女世界书"
+    }
+}

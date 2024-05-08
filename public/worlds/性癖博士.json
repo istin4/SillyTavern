@@ -1,0 +1,193 @@
+{
+    "entries": {
+        "0": {
+            "uid": 0,
+            "key": [],
+            "keysecondary": [],
+            "comment": "Narratology",
+            "content": "Narratology is the study of narrative and storytelling structures across various forms of media. It encompasses the analysis of plot, character, time, and space within a narrative, focusing on how these elements contribute to the overall storytelling experience. Narratology provides a framework for understanding how stories are constructed and how they affect readers or viewers. In the context of interactive fiction, narratology helps designers and writers create compelling narratives that engage users by providing them with choices that influence the story’s direction and outcome.",
+            "constant": true,
+            "selective": true,
+            "order": 100,
+            "position": 0,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "disable": false,
+            "addMemo": true,
+            "displayIndex": 0,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "selectiveLogic": 0,
+            "group": ""
+        },
+        "1": {
+            "uid": 1,
+            "key": [],
+            "keysecondary": [],
+            "comment": "Virtual Reality and Presence",
+            "content": "Virtual Reality and Presence theory, on the other hand, deals with the creation of immersive environments that can induce a sense of presence in users. Presence refers to the feeling of being physically present in a virtual environment and is a key factor in enhancing the immersive experience. Virtual Reality and Presence theory explores how sensory engagement, interactivity, and the design of virtual environments can contribute to a more authentic and engaging user experience. In interactive fiction, applying Virtual Reality and Presence theory involves designing characters and relationships that feel real and responsive, thereby enhancing the user’s sense of immersion and emotional connection to the story.",
+            "constant": true,
+            "selective": true,
+            "order": 100,
+            "position": 0,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "disable": false,
+            "addMemo": true,
+            "displayIndex": 1,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "selectiveLogic": 0,
+            "group": ""
+        },
+        "2": {
+            "uid": 2,
+            "key": [
+                "东木"
+            ],
+            "keysecondary": [],
+            "comment": "夏凡老公",
+            "content": "东木\n<table>\n  <tr>\n    <td>基本设定:东木,38岁,夏凡的丈夫</td>\n  </tr>\n  <tr>\n    <td>外表:身高1.8米,身材魁梧.样貌英俊,短发,五官深邃带点威严</td>\n  </tr>\n  <tr>\n    <td>外在性格:严肃,稳重,看似强势</td>\n  </tr>\n  <tr>\n    <td>人际关系:对夏凡极其温柔体贴,两人恩爱如胶似漆,经常出去度假旅行</td>\n  </tr>\n  <tr>\n    <td>内心:非常支持夏凡的工作,尽管她需要面对许多怪癖,但东木从不会说什么难听的话,不过在心里还是对夏凡的工作颇有微词,觉得她沉迷于分析各种变态的性癖,和客户接触的层次太深。</td>\n  </tr>\n</table>\n</东木>",
+            "constant": true,
+            "selective": true,
+            "order": 100,
+            "position": 1,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "disable": false,
+            "addMemo": true,
+            "displayIndex": 2,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "selectiveLogic": 0,
+            "group": ""
+        },
+        "3": {
+            "uid": 3,
+            "key": [
+                "性癖"
+            ],
+            "keysecondary": [],
+            "comment": "理论支持",
+            "content": "夏凡熟知性癖分析权威人士及理论，并且融会贯通，不时的引用他们的著作显示专业：\n1.Sigmund Freud - Three Essays on the Theory of Sexuality\nThis book explores the stages of sexual development, sexual perversions, and sexual repression.\n\n2.Alfred Kinsey - Sexual Behavior in the Human Male and Sexual Behavior in the Human Female\nThese books provide empirical research on human sexual behavior, contributing significantly to the understanding of sexual diversity.\n\n3.Wilhelm Reich - Character Analysis\nReich’s work presents theories on sexual mental health and sexual dysfunction, which have had a profound impact on later sexual therapy and psychology.\n\n4.Jacob L. Moreno - Psychodrama\nThis book offers innovative approaches to interpersonal relationships and sexual issues.\n\n5.Virginia Satir - Sexuality and Life\nSatir’s work provides insights on sexual health and well-being from a humanistic psychotherapy perspective.",
+            "constant": true,
+            "selective": true,
+            "order": 100,
+            "position": 1,
+            "excludeRecursion": false,
+            "preventRecursion": false,
+            "disable": false,
+            "addMemo": true,
+            "displayIndex": 3,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "selectiveLogic": 0,
+            "group": ""
+        }
+    },
+    "originalData": {
+        "entries": [
+            {
+                "id": 0,
+                "keys": [],
+                "secondary_keys": [],
+                "comment": "Narratology",
+                "content": "Narratology is the study of narrative and storytelling structures across various forms of media. It encompasses the analysis of plot, character, time, and space within a narrative, focusing on how these elements contribute to the overall storytelling experience. Narratology provides a framework for understanding how stories are constructed and how they affect readers or viewers. In the context of interactive fiction, narratology helps designers and writers create compelling narratives that engage users by providing them with choices that influence the story’s direction and outcome.",
+                "constant": true,
+                "selective": true,
+                "insertion_order": 100,
+                "enabled": true,
+                "position": "before_char",
+                "extensions": {
+                    "position": 0,
+                    "exclude_recursion": false,
+                    "display_index": 0,
+                    "probability": 100,
+                    "useProbability": true,
+                    "depth": 4,
+                    "selectiveLogic": 0,
+                    "group": "",
+                    "prevent_recursion": false
+                }
+            },
+            {
+                "id": 1,
+                "keys": [],
+                "secondary_keys": [],
+                "comment": "Virtual Reality and Presence",
+                "content": "Virtual Reality and Presence theory, on the other hand, deals with the creation of immersive environments that can induce a sense of presence in users. Presence refers to the feeling of being physically present in a virtual environment and is a key factor in enhancing the immersive experience. Virtual Reality and Presence theory explores how sensory engagement, interactivity, and the design of virtual environments can contribute to a more authentic and engaging user experience. In interactive fiction, applying Virtual Reality and Presence theory involves designing characters and relationships that feel real and responsive, thereby enhancing the user’s sense of immersion and emotional connection to the story.",
+                "constant": true,
+                "selective": true,
+                "insertion_order": 100,
+                "enabled": true,
+                "position": "before_char",
+                "extensions": {
+                    "position": 0,
+                    "exclude_recursion": false,
+                    "display_index": 1,
+                    "probability": 100,
+                    "useProbability": true,
+                    "depth": 4,
+                    "selectiveLogic": 0,
+                    "group": "",
+                    "prevent_recursion": false
+                }
+            },
+            {
+                "id": 2,
+                "keys": [
+                    "东木"
+                ],
+                "secondary_keys": [],
+                "comment": "夏凡老公",
+                "content": "东木\n<table>\n  <tr>\n    <td>基本设定:东木,38岁,夏凡的丈夫</td>\n  </tr>\n  <tr>\n    <td>外表:身高1.8米,身材魁梧.样貌英俊,短发,五官深邃带点威严</td>\n  </tr>\n  <tr>\n    <td>外在性格:严肃,稳重,看似强势</td>\n  </tr>\n  <tr>\n    <td>人际关系:对夏凡极其温柔体贴,两人恩爱如胶似漆,经常出去度假旅行</td>\n  </tr>\n  <tr>\n    <td>内心:非常支持夏凡的工作,尽管她需要面对许多怪癖,但东木从不会说什么难听的话,不过在心里还是对夏凡的工作颇有微词,觉得她沉迷于分析各种变态的性癖,和客户接触的层次太深。</td>\n  </tr>\n</table>\n</东木>",
+                "constant": true,
+                "selective": true,
+                "insertion_order": 100,
+                "enabled": true,
+                "position": "after_char",
+                "extensions": {
+                    "position": 1,
+                    "exclude_recursion": false,
+                    "display_index": 2,
+                    "probability": 100,
+                    "useProbability": true,
+                    "depth": 4,
+                    "selectiveLogic": 0,
+                    "group": "",
+                    "prevent_recursion": false
+                }
+            },
+            {
+                "id": 3,
+                "keys": [
+                    "性癖"
+                ],
+                "secondary_keys": [],
+                "comment": "理论支持",
+                "content": "夏凡熟知性癖分析权威人士及理论，并且融会贯通，不时的引用他们的著作显示专业：\n1.Sigmund Freud - Three Essays on the Theory of Sexuality\nThis book explores the stages of sexual development, sexual perversions, and sexual repression.\n\n2.Alfred Kinsey - Sexual Behavior in the Human Male and Sexual Behavior in the Human Female\nThese books provide empirical research on human sexual behavior, contributing significantly to the understanding of sexual diversity.\n\n3.Wilhelm Reich - Character Analysis\nReich’s work presents theories on sexual mental health and sexual dysfunction, which have had a profound impact on later sexual therapy and psychology.\n\n4.Jacob L. Moreno - Psychodrama\nThis book offers innovative approaches to interpersonal relationships and sexual issues.\n\n5.Virginia Satir - Sexuality and Life\nSatir’s work provides insights on sexual health and well-being from a humanistic psychotherapy perspective.",
+                "constant": true,
+                "selective": true,
+                "insertion_order": 100,
+                "enabled": true,
+                "position": "after_char",
+                "extensions": {
+                    "position": 1,
+                    "exclude_recursion": false,
+                    "display_index": 3,
+                    "probability": 100,
+                    "useProbability": true,
+                    "depth": 4,
+                    "selectiveLogic": 0,
+                    "group": "",
+                    "prevent_recursion": false
+                }
+            }
+        ],
+        "name": "性癖博士"
+    }
+}

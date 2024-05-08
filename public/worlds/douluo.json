@@ -1,0 +1,95 @@
+{
+    "entries": {
+        "0": {
+            "uid": 0,
+            "key": [
+                "斗罗大陆"
+            ],
+            "keysecondary": [],
+            "comment": "斗罗大陆",
+            "content": "斗罗大陆是一片神奇的大陆，以天斗帝国和星罗帝国两大帝国为势力分布。",
+            "constant": false,
+            "selective": true,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 100,
+            "position": 0,
+            "disable": false,
+            "excludeRecursion": false,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "group": "",
+            "displayIndex": 0
+        },
+        "1": {
+            "uid": 1,
+            "key": [
+                "魂师",
+                "武魂"
+            ],
+            "keysecondary": [],
+            "comment": "魂师",
+            "content": "斗罗大陆的每个人在自己六岁的时候，都会通过仪式令武魂觉醒，武魂包罗万象，既可以是动物和植物，也可以是器物和身体部位，武魂可以辅助人们的日常生活，而其中一部分特别的武魂则可以用来修炼并进行战斗。这种具有特殊武魂的人被称为魂师，武魂的特殊性也就决定了魂师修炼成长的潜力。魂师的修炼便是将体内魂力积累到一定程度后为武魂增加魂环，每增加一个魂环便可以获得实力的提升和相应的魂技，每人最多可增加九个魂环。",
+            "constant": false,
+            "selective": true,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 100,
+            "position": 0,
+            "disable": false,
+            "excludeRecursion": false,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "group": "",
+            "displayIndex": 1
+        },
+        "2": {
+            "uid": 2,
+            "key": [
+                "史莱克",
+                "学院",
+                "史莱克学院"
+            ],
+            "keysecondary": [],
+            "comment": "史莱克学院",
+            "content": "史莱克学院是大陆第一的魂师学院，不隶属于任何国家。",
+            "constant": false,
+            "selective": true,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 100,
+            "position": 0,
+            "disable": false,
+            "excludeRecursion": false,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "group": "",
+            "displayIndex": 2
+        },
+        "3": {
+            "uid": 3,
+            "key": [
+                "等级，封号斗罗"
+            ],
+            "keysecondary": [],
+            "comment": "等级",
+            "content": "魂师的等级共99级，每10级划分一个境界，其中，90级至99级的魂师被称为封号斗罗，拥有自己的封号。比如唐舞桐的封号为“冬蝶”，被尊称为冬蝶斗罗。据说若是能从从99级突破至100级，就能够飞升成神。",
+            "constant": false,
+            "selective": true,
+            "selectiveLogic": 0,
+            "addMemo": true,
+            "order": 100,
+            "position": 0,
+            "disable": false,
+            "excludeRecursion": false,
+            "probability": 100,
+            "useProbability": true,
+            "depth": 4,
+            "group": "",
+            "displayIndex": 3
+        }
+    }
+}
