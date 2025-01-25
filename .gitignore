@@ -52,3 +52,5 @@ test.bat
 /default/scaffold
 public/scripts/extensions/third-party
 /certs
+.aider*
+.env
